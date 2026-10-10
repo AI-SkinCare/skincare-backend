@@ -5,6 +5,10 @@ import helmet from 'helmet';
 import { requestIdMiddleware } from './common/middleware/request-id.middleware';
 import type { AppConfig } from './config/app-config';
 import { API_PREFIX, REFRESH_COOKIE_NAME } from './config/constants';
+import {
+  fillNullableRefTypes,
+  markPublicOperations,
+} from './common/swagger/api-envelope.decorator';
 
 /**
  * main.ts와 e2e 테스트가 같이 쓰는 HTTP 설정 (app.init() 전에 호출).
@@ -37,8 +41,15 @@ export function setupSwagger(app: NestExpressApplication): void {
       .setVersion('0.1.0')
       .addServer('/', '현재 서버')
       .addBearerAuth()
-      .addCookieAuth(REFRESH_COOKIE_NAME)
+      // 스킴 이름을 쿠키 이름과 같게 둬서 @ApiCookieAuth(REFRESH_COOKIE_NAME)과 맞춘다
+      .addCookieAuth(
+        REFRESH_COOKIE_NAME,
+        { type: 'apiKey', in: 'cookie', name: REFRESH_COOKIE_NAME },
+        REFRESH_COOKIE_NAME,
+      )
       .build(),
   );
+  fillNullableRefTypes(document.components);
+  markPublicOperations(document.paths as Record<string, Record<string, unknown>>);
   SwaggerModule.setup('api/docs', app, document, { jsonDocumentUrl: 'api/docs-json' });
 }

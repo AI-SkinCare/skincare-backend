@@ -77,5 +77,17 @@ describe('공통 규약 (TRD §7)', () => {
     const token = doc.components.schemas.TokenResponseDto;
     expect(token.properties).toHaveProperty('refreshToken');
     expect(token.required).not.toContain('refreshToken');
+
+    // 앱 타입 생성기 호환 (OpenAPI 3.0): nullable 참조에는 type, 공개 API는 security: []
+    const trend = doc.components.schemas.AnalysisTrendDto.properties as Record<
+      string,
+      { type?: string; nullable?: boolean }
+    >;
+    expect(trend.previous).toMatchObject({ type: 'object', nullable: true });
+    const ops = doc.paths as Record<string, Record<string, { security?: unknown[] }>>;
+    expect(ops['/api/v1/auth/login'].post.security).toEqual([]);
+    expect(ops['/api/v1/system/status'].get.security).toEqual([]);
+    expect(ops['/api/v1/auth/logout'].post.security).toEqual([{ bearer: [] }]);
+    expect(ops['/api/v1/analyses'].post.security).toEqual([{ bearer: [] }]);
   });
 });

@@ -9,7 +9,7 @@ import {
 import { ERROR_DEFINITIONS, ErrorCode } from '../errors/error-codes';
 
 export class SuccessEnvelopeDto {
-  @ApiProperty({ enum: [true] })
+  @ApiProperty({ type: 'boolean', example: true, description: '성공이면 항상 true' })
   success!: true;
 }
 
@@ -34,7 +34,7 @@ export class ErrorPayloadDto {
 }
 
 export class ErrorEnvelopeDto {
-  @ApiProperty({ enum: [false] })
+  @ApiProperty({ type: 'boolean', example: false, description: '실패면 항상 false' })
   success!: false;
 
   @ApiProperty({ type: ErrorPayloadDto })
@@ -83,4 +83,35 @@ export function ApiErrorResponses(...codes: ErrorCode[]) {
       }),
     ),
   );
+}
+
+type SchemaNode = Record<string, unknown>;
+
+/**
+ * Nest Swagger는 `type: X, nullable: true`를 `{ nullable: true, allOf: [$ref] }`로 내는데,
+ * OpenAPI 3.0은 nullable에 type이 필요하다. 앱 타입 생성기(swift-openapi-generator 등)가
+ * 거부하지 않게 문서 전체에서 `type: 'object'`를 채운다.
+ */
+export function fillNullableRefTypes(node: unknown): void {
+  if (Array.isArray(node)) {
+    node.forEach(fillNullableRefTypes);
+    return;
+  }
+  if (typeof node !== 'object' || node === null) return;
+  const schema = node as SchemaNode;
+  if (schema.nullable === true && schema.type === undefined && Array.isArray(schema.allOf)) {
+    schema.type = 'object';
+  }
+  Object.values(schema).forEach(fillNullableRefTypes);
+}
+
+/** 보안 요구가 없는 작업(가입·로그인·상태)에 `security: []`를 명시해 "인증 없음"을 드러낸다 */
+export function markPublicOperations(paths: Record<string, Record<string, unknown>>): void {
+  for (const item of Object.values(paths)) {
+    for (const operation of Object.values(item)) {
+      if (typeof operation === 'object' && operation !== null && !('security' in operation)) {
+        (operation as SchemaNode).security = [];
+      }
+    }
+  }
 }

@@ -359,9 +359,17 @@ export class AnalysisTrendDto {
   @ApiProperty({ type: TrendPointDto })
   current!: TrendPointDto;
 
-  @ApiProperty({ type: TrendPointDto, nullable: true })
+  @ApiProperty({
+    type: TrendPointDto,
+    nullable: true,
+    description: '직전 done·비데모 분석. 없으면 null',
+  })
   previous!: TrendPointDto | null;
 
-  @ApiProperty({ type: TrendDeltaDto, nullable: true })
+  @ApiProperty({
+    type: TrendDeltaDto,
+    nullable: true,
+    description: 'current − previous. previous가 없으면 null',
+  })
   delta!: TrendDeltaDto | null;
 }

@@ -26,19 +26,27 @@ export const PASSWORD_PATTERN =
   /^(?:(?=.*[A-Za-z])(?=.*\d)|(?=.*[A-Za-z])(?=.*[^A-Za-z\d])|(?=.*\d)(?=.*[^A-Za-z\d]))[\x21-\x7E]{8,64}$/;
 
 export class AgreementsDto {
-  @ApiProperty({ enum: [true] })
+  @ApiProperty({ type: 'boolean', example: true, description: '이용약관 동의 — 반드시 true' })
   @Equals(true)
   terms!: true;
 
-  @ApiProperty({ enum: [true] })
+  @ApiProperty({
+    type: 'boolean',
+    example: true,
+    description: '개인정보 수집·이용 동의 — 반드시 true',
+  })
   @Equals(true)
   privacy!: true;
 
-  @ApiProperty({ enum: [true], description: '얼굴 이미지 처리 동의' })
+  @ApiProperty({
+    type: 'boolean',
+    example: true,
+    description: '얼굴 이미지 처리 동의 — 반드시 true',
+  })
   @Equals(true)
   imageProcessing!: true;
 
-  @ApiProperty({ enum: [true], description: '만 14세 이상 확인' })
+  @ApiProperty({ type: 'boolean', example: true, description: '만 14세 이상 확인 — 반드시 true' })
   @Equals(true)
   over14!: true;
 }
