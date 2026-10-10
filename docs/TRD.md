@@ -1353,6 +1353,8 @@ docker-compose.yml
 - 배포: main 병합 → 서버에서 `git pull && docker compose up -d --build` (자동화는 S).
 - DB 백업(매일 03:00 pg_dump, 7일 보관)은 WBS 6.2 정도희 담당. 컴포즈에 백업 사이드카를 넣을지 함께 정한다.
 
+> 10/10 로컬에서 compose(`web`·`backend`·`db`, cloudflared 제외)로 확인: 컨테이너 시작 시 마이그레이션, 헬스체크 healthy, nginx 경유 `/api` 200·그 밖 404, `CF-Connecting-IP`가 백엔드까지 전달돼 로그인 제한이 IP별로 동작, 12MB 초과 업로드는 nginx가 413 E2003 봉투로 응답, production 쿠키 `Secure`.
+
 ### 17.3 로컬에서 iOS 앱과 연동 [구현 결정]
 
 - 백엔드는 `app.listen(PORT, '0.0.0.0')`으로 띄운다.
