@@ -152,6 +152,8 @@ describe('개인정보 (TRD §15)', () => {
     expect(lines.length).toBeGreaterThan(5);
     for (const secret of secrets) expect(raw.includes(secret)).toBe(false);
     expect(raw).toContain(`p***@example.com`);
+    // TC-ANA-09 확인용: 데모 측정이면 측정값을 보내지 않았다는 사실만 로그에 남는다
+    expect(lines.find((l) => l.msg === 'recommendation_done')).toMatchObject({ metricsSent: null });
     // 요청 로그 공통 필드
     expect(lines.find((l) => l.msg === 'request completed')).toMatchObject({
       requestId: expect.any(String),

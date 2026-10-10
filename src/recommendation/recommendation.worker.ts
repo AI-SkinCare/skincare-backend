@@ -122,6 +122,8 @@ export class RecommendationWorker implements OnApplicationBootstrap, BeforeAppli
         requestId,
         scenario: this.scenarios.get(analysisId),
       });
+      // TC-ANA-09를 원문 없이 확인할 수 있게 측정값 전송 여부(ROI 목록 또는 null)만 남긴다
+      const metricsSent = request.metrics === null ? null : Object.keys(request.metrics);
 
       if (outcome.ok) {
         if (outcome.result.warnings.length > 0) {
@@ -135,6 +137,7 @@ export class RecommendationWorker implements OnApplicationBootstrap, BeforeAppli
         this.logger.log({
           msg: saved ? 'recommendation_done' : 'recommendation_discarded',
           recommendMs: outcome.ms,
+          metricsSent,
           ...ctx,
         });
         return;
@@ -146,6 +149,7 @@ export class RecommendationWorker implements OnApplicationBootstrap, BeforeAppli
         code: failure.code,
         ai: outcome.error.toLog(),
         recommendMs: outcome.ms,
+        metricsSent,
         ...ctx,
       };
       if (failure.logLevel === 'error') this.logger.error(fields);
