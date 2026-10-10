@@ -109,7 +109,13 @@ export class RecommendationWorker implements OnApplicationBootstrap, BeforeAppli
         this.surveys.findOneBy({ analysisId }),
       ]);
       if (!survey) {
-        this.logger.log({ msg: 'recommendation_skipped_deleted', ...ctx });
+        // 같은 트랜잭션으로 저장하므로 정상이라면 없을 수 없다. 방금 삭제된 경우면 0행이라 아무 일도 없고,
+        // 데이터가 어긋난 경우면 recommending에 멈추지 않게 failed로 끝낸다.
+        if (await this.queue.markFailed(analysisId, ErrorCode.E4001, null)) {
+          this.logger.error({ msg: 'recommendation_survey_missing', ...ctx });
+        } else {
+          this.logger.log({ msg: 'recommendation_skipped_deleted', ...ctx });
+        }
         return;
       }
 

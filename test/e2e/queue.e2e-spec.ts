@@ -211,6 +211,14 @@ describe('추천 큐·워커 (TRD §13)', () => {
     expect(t.worker.isBusy).toBe(false);
   });
 
+  it('설문 행이 없는 어긋난 데이터는 recommending에 멈추지 않고 failed E4001', async () => {
+    const me = await userWithToken(t);
+    const id = await submitOk(t, me);
+    await t.dataSource.query('DELETE FROM surveys WHERE analysis_id = $1', [id]);
+    await t.worker.tick();
+    expect(await analysisRow(id)).toMatchObject({ status: 'failed', error_code: 'E4001' });
+  });
+
   it('장기 대기: queued가 60분을 넘으면 failed E3001', async () => {
     const me = await userWithToken(t);
     const id = await submitOk(t, me);
