@@ -1,4 +1,5 @@
 import { JwtService } from '@nestjs/jwt';
+import { RefreshTokenService } from '../../src/auth/refresh-token.service';
 import { insertDoneAnalyses } from '../../src/database/seeds/seed-data';
 import {
   PASSWORD,
@@ -345,6 +346,21 @@ describe('인증 (TRD §9)', () => {
         .expect(422);
       expect(res.body.error.code).toBe('E4002');
     });
+  });
+
+  it('토큰 정리 배치(TRD §8.5): 만료 후 7일 지난 리프레시 토큰만 삭제', async () => {
+    const me = await userWithToken(t);
+    const insert = (hash: string, expiresAt: string) =>
+      t.dataSource.query(
+        `INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, now() + $3::interval)`,
+        [me.user.id, hash.padEnd(64, '0'), expiresAt],
+      );
+    await insert('a', '-8 days'); // 지움
+    await insert('b', '-6 days'); // 만료됐지만 7일 안 → 남김
+    const deleted = await t.app.get(RefreshTokenService).cleanupExpired();
+    expect(deleted).toBe(1);
+    // 로그인 때 받은 토큰 + 6일 지난 토큰
+    expect((await refreshTokensOf(me.user.id)).length).toBe(2);
   });
 
   describe('사용자', () => {
