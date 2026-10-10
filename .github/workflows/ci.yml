@@ -1,0 +1,29 @@
+# TRD §16.3 — develop·main 대상 PR과 푸시에서 lint·test·build·test:e2e
+name: ci
+on:
+  pull_request: { branches: [develop, main] }
+  push: { branches: [develop, main] }
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: test, POSTGRES_PASSWORD: test, POSTGRES_DB: test }
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://test:test@localhost:5432/test
+      AI_MODE: fixture
+      NODE_ENV: test
+      JWT_ACCESS_SECRET: ci-access-secret-not-real
+      JWT_REFRESH_SECRET: ci-refresh-secret-not-real
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run build
+      - run: npm run test:e2e
