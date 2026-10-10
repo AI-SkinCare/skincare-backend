@@ -24,7 +24,8 @@
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/database/data-source.ts",
     "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/database/data-source.ts",
     "migration:create": "typeorm-ts-node-commonjs migration:create",
-    "seed": "ts-node src/database/seeds/seed.ts"
+    "seed": "ts-node src/database/seeds/seed.ts",
+    "smoke": "ts-node test/smoke/smoke-flow.ts"
   },
   "jest": {
     "moduleFileExtensions": [
