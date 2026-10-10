@@ -25,7 +25,9 @@
     "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/database/data-source.ts",
     "migration:create": "typeorm-ts-node-commonjs migration:create",
     "seed": "ts-node src/database/seeds/seed.ts",
-    "smoke": "ts-node test/smoke/smoke-flow.ts"
+    "smoke": "ts-node test/smoke/smoke-flow.ts",
+    "load:image": "ts-node load/make-image.ts",
+    "report:latency": "ts-node src/database/scripts/latency-report.ts"
   },
   "jest": {
     "moduleFileExtensions": [
