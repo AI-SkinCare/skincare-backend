@@ -1,0 +1,27 @@
+# 의존성·빌드
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# 비밀값 — .env.example만 커밋한다
+.env
+.env.*
+!.env.example
+
+# 로그·OS
+*.log
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# 실제 얼굴 사진·데이터·가중치 금지 (테스트 이미지는 코드로 합성)
+*.jpg
+*.jpeg
+*.png
+*.heic
+*.pt
+*.pth
+*.onnx
+*.safetensors
