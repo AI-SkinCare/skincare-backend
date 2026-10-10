@@ -152,63 +152,65 @@ Redis·BullMQ 등 별도 큐 인프라는 쓰지 않는다(SC-02 §4.2).
 
 ## 5. 프로젝트 구조 [구현 결정]
 
+10/10 구현 기준 실제 구조. 파일을 옮기거나 더하면 이 트리도 고친다.
+
 ```
 skincare-backend/
-├─ CLAUDE.md
-├─ README.md                    # 첫 줄: skincare-ai/docs/project/ 링크
+├─ CLAUDE.md · README.md        # README 첫 줄: skincare-ai/docs/project/ 링크
 ├─ docs/TRD.md                  # 이 문서
 ├─ .env.example                 # 가짜 값만
-├─ Dockerfile
-├─ docker-compose.yml
-├─ .github/workflows/ci.yml
-├─ .github/ISSUE_TEMPLATE/      # skincare-ai/templates/github/ 에서 복사
-├─ load/                        # k6 스크립트 (Phase 7)
+├─ Dockerfile · docker/start.sh # 시작 시 마이그레이션 → 앱
+├─ docker-compose.yml · nginx/default.conf
+├─ .github/                     # ISSUE_TEMPLATE·PR 템플릿(skincare-ai에서 복사), workflows/ci.yml
+├─ load/                        # k6 스크립트(perf-01·03·04), lib/common.js, README (Phase 7)
 ├─ src/
-│  ├─ main.ts                   # prefix, 쿠키, CORS, trust proxy, ValidationPipe, Swagger, shutdown hooks
-│  ├─ app.module.ts
-│  ├─ config/                   # env 스키마·검증, 타입 있는 설정
+│  ├─ main.ts                   # 로거, configureApp, shutdown hooks, 0.0.0.0 listen
+│  ├─ app.setup.ts              # X-Request-Id(맨 먼저)·trust proxy·helmet·쿠키·CORS·prefix·Swagger (e2e와 공유)
+│  ├─ app.module.ts             # 전역 필터·봉투 인터셉터·ValidationPipe(422 E4002)
+│  ├─ config/                   # app-config.ts(env 스키마·검증 → 타입 있는 APP_CONFIG), constants.ts
 │  ├─ database/
-│  │  ├─ data-source.ts         # TypeORM CLI용 DataSource
+│  │  ├─ data-source.ts         # TypeORM CLI용
+│  │  ├─ typeorm-options.ts · entities.ts · transformers.ts(NUMERIC·BIGINT) · raw-query.ts
 │  │  ├─ migrations/            # {타임스탬프}-{동사}{대상}.ts
-│  │  └─ seeds/                 # npm run seed
+│  │  ├─ seeds/                 # seed.ts(npm run seed), seed-data.ts(e2e와 공유)
+│  │  └─ scripts/latency-report.ts  # 응답 시간 분포 (npm run report:latency)
 │  ├─ common/
-│  │  ├─ enums/                 # ROI, 지표, 피부 타입·고민(코드↔라벨), 루틴 시간, 등급, 상태 …
-│  │  ├─ errors/                # error-codes.ts(코드·HTTP·문구), api.exception.ts, api-exception.filter.ts
-│  │  ├─ interceptors/          # response-envelope.interceptor.ts
-│  │  ├─ middleware/            # request-id.middleware.ts
-│  │  ├─ logging/               # pino 설정, redact, 이메일 마스킹
-│  │  ├─ swagger/               # 응답 봉투 데코레이터
-│  │  └─ utils/                 # time.ts(KST·ISO), client-ip.ts
-│  ├─ auth/                     # controller, service, jwt.strategy, guards, dto, refresh-token.entity
+│  │  ├─ enums/                 # 부록 A 단일 출처 (코드 ↔ AI 라벨)
+│  │  ├─ errors/                # error-codes.ts, api.exception.ts, api-exception.filter.ts
+│  │  ├─ interceptors/ · middleware/ · logging/ · swagger/
+│  │  ├─ validation/            # 검증 오류 → detail.fields, ParseUlidPipe
+│  │  ├─ http/app-request.ts    # req.id·req.user 타입
+│  │  ├─ utils/                 # time.ts(KST·ISO), client-ip.ts, ulid.ts, sleep.ts(지연 주입 토큰)
+│  │  └─ common.module.ts       # SLEEP 제공
+│  ├─ auth/                     # controller, service, refresh-token.service(교체·재사용 감지·정리 배치),
+│  │                            # jwt.strategy, guards/(jwt-auth, login-rate), login-rate-limiter,
+│  │                            # refresh-cookie.ts, client-type.ts([앱 협의] X-Client), token-hash.ts, dto/
 │  ├─ users/                    # controller, service, user.entity
 │  ├─ analyses/
-│  │  ├─ analyses.controller.ts
-│  │  ├─ analyses.service.ts
+│  │  ├─ analyses.controller.ts · analyses.service.ts
 │  │  ├─ analysis-presenter.ts  # DB 행 → API 응답
 │  │  ├─ scoring.ts             # 점수·등급 순수 함수 (§11)
-│  │  ├─ guards/                # analysis-limit, queue-capacity, ai-availability
-│  │  ├─ pipes/                 # survey 파싱·검증, 이미지 검증
-│  │  ├─ dto/
-│  │  └─ entities/              # analysis, skin-metric, survey, recommendation
+│  │  ├─ survey.ts              # survey 파싱·검증·정규화
+│  │  ├─ guards/                # analysis-limit(+submission-lock), queue-capacity, ai-availability
+│  │  ├─ pipes/                 # analysis-submission.pipe(처리 순서 6), image-signature
+│  │  ├─ dto/ · entities/
 │  ├─ recommendation/
 │  │  ├─ recommendation.worker.ts
-│  │  ├─ recommendation-queue.repository.ts  # §13 SQL
+│  │  ├─ recommendation-queue.repository.ts + .module.ts  # §13 SQL (analyses·system도 사용)
 │  │  └─ queue-maintenance.service.ts        # 장기 대기 만료, 기동 복구
 │  ├─ ai-client/
-│  │  ├─ ai-client.interface.ts
-│  │  ├─ http-ai-client.ts
-│  │  ├─ fixture-ai-client.ts
+│  │  ├─ ai-client.interface.ts · ai-client.module.ts (AI_CLIENT 토큰)
+│  │  ├─ http-ai-client.ts · fixture-ai-client.ts · fixture-scenario.store.ts
 │  │  ├─ ai-error.ts            # 분류: http / connection / timeout / invalid_response
 │  │  ├─ ai-error.mapper.ts     # §12.5 표
 │  │  ├─ ai-response.schemas.ts # AI 응답 검증
 │  │  └─ ai-transform.ts        # 설문·지표 변환, 라벨→코드
-│  └─ system/
-│     ├─ system.controller.ts
-│     └─ ai-health.service.ts
+│  └─ system/                   # ai-health.service.ts, system.controller.ts
 └─ test/
-   ├─ fixtures/ai/              # skin-metrics.ok.json, recommend.ok.json
-   ├─ fixtures/images/          # 합성 이미지만 (실제 얼굴 사진 커밋 금지)
-   ├─ e2e/                      # *.e2e-spec.ts
+   ├─ fixtures/ai/              # skin-metrics.ok.json, recommend.ok.json (skincare-ai 실제 출력)
+   ├─ fixtures/images.ts        # 합성 이미지 생성 (실제 얼굴 사진 커밋 금지)
+   ├─ e2e/                      # *.e2e-spec.ts, helpers/(test-app, factories, capture-stdout), global-setup
+   ├─ smoke/smoke-flow.ts       # npm run smoke
    └─ jest-e2e.json
 ```
 
