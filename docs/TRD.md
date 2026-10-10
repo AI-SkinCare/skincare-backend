@@ -24,6 +24,7 @@
 | 2026-10-10 | 최초 작성 |
 | 2026-10-10 | [앱 협의] §9 네이티브 앱 리프레시 토큰 본문 전달(`X-Client: ios`) 추가 — SC-03 반영 필요 |
 | 2026-10-10 | §12.7·부록 B: fixture를 `skincare-ai/docs/fixtures/` 실제 출력으로 교체 |
+| 2026-10-10 | §8.4 배포 서버 시드 절차, §16.1 실제 AI 계약 테스트·스모크, §17.4 스모크 단계, §18.1 Phase 7 |
 
 ---
 
@@ -453,6 +454,7 @@ CREATE TABLE recommendations (
 - 계정 `test01@skincare.dev` ~ `test40@skincare.dev` (동시 요청 테스트용). 비밀번호는 `SEED_PASSWORD`, 동의 시각 4개 기록.
 - `test01`에 **완료(done) 분석 25건** — 날짜를 최근 수 주에 분산, `is_demo=false`(이력·추이 화면 확인용), `full_face` + 일부 ROI 지표, 설문, 추천 행 포함. TC-HIS-01(1쪽 20건, 2쪽 5건)이 이 데이터로 돈다.
 - 다시 실행해도 안전하게(시드 계정 삭제 후 재생성) [구현 결정].
+- 배포 서버(`NODE_ENV=production`)에서는 시드가 거부된다. 성능 테스트 기간에만 일회용 컨테이너로 명시적으로 넣고 끝나면 지운다 [구현 결정]: `docker compose run --rm -e NODE_ENV=development backend node dist/database/seeds/seed.js` (삭제 명령은 `load/README.md`).
 
 ### 8.5 보존·삭제
 
@@ -1244,6 +1246,8 @@ nginx·터널 뒤라 모든 요청의 출발 IP가 같다. `TRUST_PROXY=true`면
 | 계약 | fixture JSON이 AI 응답 검증·변환을 통과하는지, 변환한 요청이 SC-03 §5.2 모양인지 | Jest + `test/fixtures/ai` | CI, AI 응답이 바뀔 때 |
 | API 통합 | 백엔드 + DB, 엔드포인트별 | Jest e2e + supertest + PostgreSQL 16 | `npm run test:e2e`, CI 서비스 컨테이너 |
 | 성능 | 응답 시간, 동시 요청 | k6 (`load/`) | 스테이징, 11/10–11/20 |
+| 실제 AI 계약 [구현 결정] | 백엔드 요청을 실제 skincare-ai가 인식하는지(고민 8종·피부 타입 4종 라벨), 응답이 검증을 통과하는지 | Jest (`test/e2e/ai-contract.e2e-spec.ts`, `AI_CONTRACT_URL`이 있을 때만) | AI 서버가 바뀔 때, M3 전 |
+| 스모크 [구현 결정] | 실행 중인 서버의 전체 흐름(상태 → 로그인 → 제출 → 추천 완료 → 이력·추이 → refresh) | `npm run smoke` (`SMOKE_BASE_URL`) | 배포 직후, AI 연동 확인 |
 
 e2e 기반 [구현 결정]:
 
@@ -1360,6 +1364,9 @@ docker-compose.yml
 1. 김우주: AI 서버 기동(`$env:REC_BACKEND="sllm"; .\scripts\run_server.ps1`) + 터널(`cloudflared tunnel run skincare-ai`)
 2. 백엔드 `.env`: `AI_MODE=real`, `AI_BASE_URL`, `AI_INTERNAL_TOKEN` 설정 후 재시작
 3. `GET /api/v1/system/status`가 `aiAvailable: true`인지 확인
+4. `SMOKE_BASE_URL=https://app.<도메인>/api/v1 SMOKE_PASSWORD=… npm run smoke`로 전체 흐름 확인 [구현 결정] (회귀 모델 연결 후에는 `SMOKE_IMAGE`로 본인 동의 얼굴 사진)
+
+로컬에서 미리 확인하려면 skincare-ai를 mock 모드(`REC_BACKEND=mock`, GPU 불필요)로 띄우고 `AI_MODE=real`로 붙인다. 10/10 이 방식으로 측정·추천·토큰 오류·AI 중지/복구를 확인했다.
 
 연동 테스트가 필요하면 김우주에게 **하루 전** 요청한다(PC 학습 일정과 겹침 방지).
 
@@ -1371,7 +1378,7 @@ docker-compose.yml
 
 오늘(10/10) 기준 M2(10/12)까지 Phase 0–3의 M 항목을 fixture 모드로 끝내는 것이 목표다. 완료한 항목은 체크한다.
 
-> 10/10 진행: Phase 0–6 구현·테스트 완료 (단위 + e2e, fixture 모드). 실제 AI 서버(`AI_MODE=real`) 연동 확인(M3)과 Phase 7(k6)이 남았다.
+> 10/10 진행: Phase 0–7 구현·테스트 완료 (단위 + e2e, fixture 모드). 로컬에서 실제 skincare-ai(mock 추천·stub 측정)와 `AI_MODE=real` 연동도 확인했다. 남은 것: 배포 서버 + 실제 sLLM 연동(M3), 스테이징 부하 테스트 실측(11/10–11/20).
 
 **Phase 0 — 골격 (WBS 4.1·4.2)**
 - [x] NestJS 10 프로젝트, ESLint·Prettier(printWidth 100, singleQuote), TS strict
@@ -1418,8 +1425,9 @@ docker-compose.yml
 - [x] Dockerfile, 운영 compose(web·backend·db·cloudflared), 로그 로테이션, 시작 시 마이그레이션
 
 **Phase 7 — 부하 테스트 (WBS 4.8, 11/10–11/20)**
-- [ ] k6 스크립트(`load/`): TC-PERF-01~04, 계정별 토큰 미리 발급(로그인 제한 회피), 스테이징 `ANALYSIS_DAILY_LIMIT=100`
-- [ ] 응답 시간 분포 집계 쿼리(measure_ms, queue_wait_ms, recommend_ms)
+- [x] k6 스크립트(`load/`): TC-PERF-01~04, 계정별 토큰 미리 발급(로그인 제한 회피), 스테이징 `ANALYSIS_DAILY_LIMIT=100` — 로컬 fixture로 동작 확인 (10/10)
+- [x] 응답 시간 분포 집계 쿼리(measure_ms, queue_wait_ms, recommend_ms) — `npm run report:latency`, 배포 서버는 `node dist/database/scripts/latency-report.js`
+- [ ] 스테이징 실측 (11/10–11/20, 실제 AI 서버) — 실행 방법은 `load/README.md`
 
 ### 18.2 완료 기준 (Definition of Done, SC-06 §4.3)
 

@@ -30,6 +30,11 @@ npm run test                     # 단위
 npm run test:e2e                 # DB 필요, AI_MODE=fixture
 npm run build
 npm run migration:generate -- src/database/migrations/<동사><대상>
+
+npm run smoke                    # 실행 중인 서버 전체 흐름 점검 (SMOKE_BASE_URL)
+AI_CONTRACT_URL=http://127.0.0.1:8000 AI_CONTRACT_TOKEN=… npm run test:e2e -- ai-contract   # 실제 AI 계약
+npm run load:image               # k6용 합성 이미지 → load/README.md
+npm run report:latency -- --since <ISO>   # measure/queue_wait/recommend ms 분포
 ```
 
 스크립트가 아직 없으면 Phase 0(TRD §18.1)에서 이 이름 그대로 만든다.
@@ -107,3 +112,4 @@ src/system/        AI 헬스체크(30초), GET /system/status
 - 워커가 결과를 저장할 때 `UPDATE … WHERE id=$1 AND status='recommending'`이 0행이면(탈퇴·삭제됨) 결과를 버린다. FK 오류로 500을 내지 않는다.
 - POST·retry의 `X-Fixture-Scenario`는 워커까지 전달돼야 한다 → 분석 id별 메모리 맵. production에선 헤더를 무시.
 - 데모 값만 있는 지금(회귀 모델 연결 10/17 전)은 trend가 항상 `previous: null`이다. 시드 데이터(`is_demo=false`)로 테스트한다.
+- `nest build`는 `deleteOutDir`로 dist를 지운다. `tsBuildInfoFile`을 dist 밖으로 옮기면 재빌드 때 dist가 빈다 (tsconfig.build.json 참고).

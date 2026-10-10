@@ -39,6 +39,10 @@ npm run start:dev                # http://localhost:3000/api/docs
 | `npm run test:e2e` | e2e (DB 필요, `<DB이름>_test`를 자동 생성·마이그레이션) |
 | `npm run build` | 빌드 |
 | `npm run migration:generate -- src/database/migrations/<동사><대상>` | 엔티티 변경으로 마이그레이션 생성 |
+| `npm run smoke` | 실행 중인 서버의 전체 흐름 점검 (`SMOKE_BASE_URL`, 배포 직후·AI 연동 확인용) |
+| `npm run report:latency -- --since <ISO>` | 측정·대기·추천 소요 시간 분포 (성능 분석) |
+
+부하 테스트(k6)는 [load/README.md](load/README.md)를 본다.
 
 - API: `http://localhost:3000/api/v1`, Swagger JSON: `/api/docs-json` (앱 타입 생성용)
 - iOS 시뮬레이터는 `localhost`, 실기기는 같은 Wi-Fi에서 Mac의 LAN IP로 접속 (`0.0.0.0`에서 listen)
