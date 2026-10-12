@@ -23,6 +23,9 @@ export interface HttpAiClientOptions {
   recTimeoutMs: number;
 }
 
+/** Cloudflare Error 524 — A timeout occurred (원 서버 응답 시간 초과) */
+const CLOUDFLARE_ORIGIN_TIMEOUT = 524;
+
 interface RequestOptions {
   method: 'GET' | 'POST';
   body?: FormData | string;
@@ -112,6 +115,9 @@ export class HttpAiClient implements AiClient {
       if (aiError) {
         throw new AiError('http', { status, code: aiError.code, aiMessage: aiError.message });
       }
+      // Cloudflare 524 = 원 서버(AI)가 연결은 받았지만 125초 안에 응답하지 않음. AI는 GPU 생성을 계속하므로
+      // 504와 같이 재시도하면 안 된다 → timeout으로 분류 (워커: 재시도 없이 E3002) [구현 결정]
+      if (status === CLOUDFLARE_ORIGIN_TIMEOUT) throw new AiError('timeout', { status });
       // 본문에 error.code가 없는 5xx = Cloudflare HTML(502/521/522/523/530 등) → 연결 실패로 본다.
       // Cloudflare의 503을 AI의 503 E3003으로 읽으면 "요청이 많아요"가 잘못 뜬다.
       if (status >= 500) throw new AiError('connection', { status });

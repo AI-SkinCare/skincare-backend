@@ -1,6 +1,7 @@
 import { AddressInfo } from 'node:net';
 import { Server, createServer } from 'node:http';
 import { AiError } from './ai-error';
+import { isRecommendRetryable, mapRecommendError } from './ai-error.mapper';
 import { HttpAiClient } from './http-ai-client';
 
 type Handler = (
@@ -92,6 +93,18 @@ describe('HttpAiClient 오류 분류 (TRD §12.2)', () => {
     await new Promise((r) => server.close(r));
     servers = [];
     expect(await caught(client(url).health())).toMatchObject({ kind: 'connection' });
+  });
+
+  it('Cloudflare 524(AI가 125초 안에 응답 안 함) → timeout — 연결 실패처럼 재시도하지 않게', async () => {
+    const { url } = await start(() => ({
+      status: 524,
+      body: '<html>A timeout occurred</html>',
+      contentType: 'text/html',
+    }));
+    const error = await caught(client(url).recommend(request, ctx));
+    expect(error).toMatchObject({ kind: 'timeout', status: 524 });
+    expect(isRecommendRetryable(error)).toBe(false);
+    expect(mapRecommendError(error).code).toBe('E3002');
   });
 
   it('우리 타임아웃 초과 → timeout', async () => {

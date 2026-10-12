@@ -26,6 +26,7 @@
 | 2026-10-10 | §12.7·부록 B: fixture를 `skincare-ai/docs/fixtures/` 실제 출력으로 교체 |
 | 2026-10-10 | §8.4 배포 서버 시드 절차, §16.1 실제 AI 계약 테스트·스모크, §17.4 스모크 단계, §18.1 Phase 7 |
 | 2026-10-12 | §4 image-size 2.x, 하위 의존성 보안 패치(overrides) |
+| 2026-10-12 | §12.2 Cloudflare 524를 timeout으로 분류 (재시도 금지) |
 
 ---
 
@@ -932,8 +933,9 @@ interface AiClient {
 | 상황 | kind |
 |---|---|
 | `fetch`가 응답 전에 실패 (ECONNREFUSED, ENOTFOUND, ECONNRESET, TLS 오류 등) | `connection` |
-| 상태 ≥ 500이고 본문이 위 실패 JSON(`error.code` 있음)이 **아님** — PC가 꺼졌을 때 Cloudflare가 주는 502/521/522/523/530 HTML 등 | `connection` |
+| 상태 ≥ 500이고 본문이 위 실패 JSON(`error.code` 있음)이 **아님** — PC가 꺼졌을 때 Cloudflare가 주는 502/521/522/523/530 HTML 등 (524 제외, 아래) | `connection` |
 | 우리 타임아웃(`AbortSignal.timeout`) 초과 | `timeout` |
+| 상태 524(Cloudflare: AI가 연결은 받았지만 125초 안에 응답 안 함) — AI가 생성을 계속하므로 504처럼 재시도 금지 [구현 결정, 10/12] | `timeout` |
 | 상태 ≥ 400이고 본문에 `error.code` 있음 | `http` (status, code) |
 | 2xx인데 JSON 파싱 실패 또는 스키마 위반 | `invalid_response` |
 
