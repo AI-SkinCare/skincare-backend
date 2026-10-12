@@ -99,7 +99,7 @@
 
 | API | 용도 |
 |---|---|
-| `GET /system/status` (인증 없음) | `aiAvailable=false`면 홈·촬영 화면에 점검 배너, 측정 시작 버튼 비활성 |
+| `GET /system/status` (인증 없음) | `aiAvailable=false`면 홈·촬영 화면에 점검 배너, 측정 시작 버튼 비활성. `checkedAt`은 서버의 첫 헬스체크 전이면 `null`일 수 있으니 Optional로 받는다 |
 | `GET /analyses?page=1&size=20` | 이력 (최신순). 홈의 최근 결과는 `size=1` |
 | `GET /analyses/{id}/trend` | 직전 분석 대비. `previous: null`이면 "비교할 이전 측정이 없습니다". 색소침착·모공은 `delta`가 음수면 좋아진 것 |
 | `DELETE /analyses/{id}` | 이력 삭제 (204) |

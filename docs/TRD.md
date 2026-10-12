@@ -1360,6 +1360,8 @@ docker-compose.yml
 
 > 10/10 로컬에서 compose(`web`·`backend`·`db`, cloudflared 제외)로 확인: 컨테이너 시작 시 마이그레이션, 헬스체크 healthy, nginx 경유 `/api` 200·그 밖 404, `CF-Connecting-IP`가 백엔드까지 전달돼 로그인 제한이 IP별로 동작, 12MB 초과 업로드는 nginx가 413 E2003 봉투로 응답, production 쿠키 `Secure`.
 
+> 10/12 전체 실행 확인: 위 구성 + skincare-ai(mock 추천·stub 측정)를 같은 compose 네트워크에 붙이고 `AI_MODE=real`로 연결. nginx 경유 `npm run smoke` 32개 항목(13개 엔드포인트, 오류 경로, 토큰 교체·재사용 감지, 탈퇴 정리) 통과, 추천 실패 → 재요청 → done, AI 중지 21초 만에 비가용·제출 503 E3001·로그인/이력 정상·재시작 29초 만에 복구, k6 PERF-03(10명 동시) 실패 0. iOS 앱(skincare-frontend `chore/ios-project-setup`)은 Xcode가 없어 실행하지 못했고 네트워크·모델 코드를 계약과 대조했다 (`SystemStatus.checkedAt` Optional 필요 외 일치).
+
 ### 17.3 로컬에서 iOS 앱과 연동 [구현 결정]
 
 - 백엔드는 `app.listen(PORT, '0.0.0.0')`으로 띄운다.
@@ -1373,7 +1375,7 @@ docker-compose.yml
 1. 김우주: AI 서버 기동(`$env:REC_BACKEND="sllm"; .\scripts\run_server.ps1`) + 터널(`cloudflared tunnel run skincare-ai`)
 2. 백엔드 `.env`: `AI_MODE=real`, `AI_BASE_URL`, `AI_INTERNAL_TOKEN` 설정 후 재시작
 3. `GET /api/v1/system/status`가 `aiAvailable: true`인지 확인
-4. `SMOKE_BASE_URL=https://app.<도메인>/api/v1 SMOKE_PASSWORD=… npm run smoke`로 전체 흐름 확인 [구현 결정] (회귀 모델 연결 후에는 `SMOKE_IMAGE`로 본인 동의 얼굴 사진)
+4. `SMOKE_BASE_URL=https://app.<도메인>/api/v1 npm run smoke`로 API 전체 확인 [구현 결정] — 임시 계정을 가입시켜 13개 엔드포인트·주요 오류 경로를 돌고 탈퇴까지 한다 (회귀 모델 연결 후에는 `SMOKE_IMAGE`로 본인 동의 얼굴 사진)
 
 로컬에서 미리 확인하려면 skincare-ai를 mock 모드(`REC_BACKEND=mock`, GPU 불필요)로 띄우고 `AI_MODE=real`로 붙인다. 10/10 이 방식으로 측정·추천·토큰 오류·AI 중지/복구를 확인했다.
 

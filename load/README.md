@@ -69,3 +69,5 @@ docker compose cp backend:/tmp/latency.csv ./latency.csv
 | perf-04 | 2–11번째 202, 12–15번째 503 E3003 |
 
 fixture는 측정이 즉시, 추천이 1초라서 실제 수치는 스테이징에서 다시 잰다.
+
+10/12 로컬 전체 구성(nginx → backend → db + skincare-ai mock)에서 위 "배포 서버 시드" 절차와 perf-03을 실행: 10건 모두 done, `http_req_failed` 0%, `time_to_done` 최대 12.6초.
