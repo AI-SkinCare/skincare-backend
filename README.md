@@ -58,7 +58,7 @@ docker compose up -d --build     # 컨테이너 시작 시 마이그레이션 �
 실제 AI 서버 연동은 `.env`에 `AI_MODE=real`, `AI_BASE_URL`, `AI_INTERNAL_TOKEN`을 넣고 재시작한 뒤 `GET /api/v1/system/status`의 `aiAvailable`을 확인합니다 (TRD §17.4).
 
 ## 협업
-- 브랜치: `main`(배포·발표) ← `develop`(통합, PR로만) ← `feat/{이슈번호}-{영문-요약}`
+- 브랜치: `main`(배포·발표, 직접 푸시 금지) ← `develop`(개발). 백엔드 작업은 `develop`에 올리고, `main` 반영은 develop → main PR로 한다
 - 커밋: `<타입>: <무엇을 했는지 한 줄> (#이슈번호)` — feat · fix · docs · refactor · test · chore
 - `.env`·실제 얼굴 사진·학습 데이터·가중치는 커밋하지 않습니다 (Public 레포)
 

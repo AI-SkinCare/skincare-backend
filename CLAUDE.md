@@ -12,7 +12,7 @@
 - 로컬 참고용 클론 (읽기 전용으로 쓰고 이 레포에 코드를 복사하지 않는다):
   - `../AI` — skincare-ai, 개발 브랜치 `feat/rec-sllm-v2`. 팀 문서 `../AI/docs/project/`, AI 서버 스키마 `../AI/server/schemas.py`, fixture 원본 `../AI/docs/fixtures/`
   - `../AI_FE` — skincare-frontend (`main`, 아직 README만)
-- 이 레포 브랜치: `main`(배포·발표, 직접 작업 금지) ← `develop`(통합) ← `feat/{이슈번호}-…`. 작업은 `develop`에서 딴 브랜치에서 한다.
+- 이 레포 브랜치: `main`(배포·발표, **건드리지 않음**) ← `develop`(백엔드 개발 브랜치). 작업은 `develop`에서 하고 `develop`에 푸시한다 (10/12 이현승 결정).
 - 진행 상황은 TRD §18.1 체크리스트로 관리한다. 항목을 끝내면 체크한다.
 
 ## 명령어
@@ -89,8 +89,9 @@ src/system/        AI 헬스체크(30초), GET /system/status
 
 ## Git
 
-- 사용자가 요청할 때만 커밋·푸시한다. `main`·`develop`에 직접 푸시하지 않는다.
-- 브랜치 `feat/{이슈번호}-{영문-요약}` (fix/ docs/ chore/ 도 같은 형식), develop에서 출발.
+- 사용자가 요청할 때만 커밋·푸시한다. 백엔드 작업은 `develop`에 푸시하고 **`main`에는 절대 푸시하지 않는다** (main 반영은 develop → main PR, 배포·발표 시점).
+- 푸시는 SSH(`origin`의 push URL)로 한다. HTTPS 토큰에는 `workflow` 권한이 없어 `.github/workflows/` 변경이 거절된다.
+- 따로 브랜치가 필요하면 `feat/{이슈번호}-{영문-요약}` (fix/ docs/ chore/ 도 같은 형식), develop에서 출발.
 - 커밋 `<타입>: <무엇을 했는지 한 줄, 한국어> (#이슈번호)` — feat · fix · docs · refactor · test · chore. 한 커밋에 한 가지 변경.
 - PR은 develop 대상, 400줄 이하 권장. 본문: 무엇을 · 왜 · 테스트 방법. API·DB가 바뀌면 문서도 같은 PR에서.
 
