@@ -25,6 +25,7 @@
 | 2026-10-10 | [앱 협의] §9 네이티브 앱 리프레시 토큰 본문 전달(`X-Client: ios`) 추가 — SC-03 반영 필요 |
 | 2026-10-10 | §12.7·부록 B: fixture를 `skincare-ai/docs/fixtures/` 실제 출력으로 교체 |
 | 2026-10-10 | §8.4 배포 서버 시드 절차, §16.1 실제 AI 계약 테스트·스모크, §17.4 스모크 단계, §18.1 Phase 7 |
+| 2026-10-12 | §4 image-size 2.x, 하위 의존성 보안 패치(overrides) |
 
 ---
 
@@ -138,7 +139,7 @@ FE ──GET /analyses/{id}──▶ BE ─전체 결과─▶ FE
 | 업로드 | multer `memoryStorage` (Nest `FileInterceptor`) | 디스크 옵션 사용 금지 |
 | 스케줄 | `@nestjs/schedule` | 워커 폴링, 헬스체크, 장기 대기 만료, 토큰 정리 |
 | ID | ULID (`ulidx` 등) | [구현 결정] |
-| 이미지 헤더 | `image-size` (버퍼에서 가로·세로만 읽음) | [구현 결정] 디코딩·저장 없음 |
+| 이미지 헤더 | `image-size` 2.x (버퍼에서 가로·세로만 읽음) | [구현 결정] 디코딩·저장 없음. 2.x 기본 진입점은 파일을 읽지 않고, JPEG·PNG 외 파서는 꺼 둔다 |
 | AI HTTP | Node 내장 `fetch` + `FormData`/`Blob` + `AbortSignal.timeout` | [구현 결정] 추가 의존성 없음 |
 | 로깅 | `nestjs-pino`(pino) JSON 로그 + redact | [구현 결정] |
 | 요청 컨텍스트 | `AsyncLocalStorage`(node 내장) 또는 `nestjs-cls` | [구현 결정] requestId 전파 |
@@ -147,6 +148,8 @@ FE ──GET /analyses/{id}──▶ BE ─전체 결과─▶ FE
 | 린트 | NestJS 기본 ESLint + Prettier(printWidth 100, singleQuote) | |
 
 Redis·BullMQ 등 별도 큐 인프라는 쓰지 않는다(SC-02 §4.2).
+
+보안 패치 [구현 결정]: Nest 10을 유지하므로, Nest가 고정한 하위 의존성 중 취약 버전은 `package.json`의 `overrides`로 **같은 메이저의 패치 버전**을 쓴다(`multer`·`body-parser`·`qs`·`lodash`·`js-yaml`, 10/12). 남은 `npm audit` 3건은 메이저 업그레이드로만 고쳐지고 우리가 쓰지 않는 기능이다 — `@nestjs/core`(SSE 메시지 type·id 주입, SSE 미사용), `file-type`(Nest `FileTypeValidator`, 미사용 — 시그니처는 직접 검사), `uuid`(v3/v5/v6의 buf 인자, 미사용).
 
 ---
 
