@@ -1,7 +1,8 @@
-import { disableFS, imageSize } from 'image-size';
+import { disableTypes, imageSize, types } from 'image-size';
 
-// 얼굴 이미지는 디스크에 닿지 않는다 — image-size가 경로 문자열을 받아 파일을 읽는 일이 없게 막는다.
-disableFS(true);
+// image-size 2.x의 기본 진입점은 버퍼만 읽는다(파일 읽기는 image-size/fromFile로 분리) — 디스크에 닿지 않는다.
+// 시그니처로 JPEG·PNG만 통과시키지만, 다른 형식 파서(HEIF·JXL·ICNS 등, DoS 권고 이력)는 아예 끈다.
+disableTypes(types.filter((type) => type !== 'jpg' && type !== 'png'));
 
 export type ImageMimeType = 'image/jpeg' | 'image/png';
 
