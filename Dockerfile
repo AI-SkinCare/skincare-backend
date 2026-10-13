@@ -1,28 +1,23 @@
-# TRD §17.1 — 멀티 스테이지 node:20-alpine
-FROM node:20-alpine AS build
+# TRD §17.1 — 멀티 스테이지: JDK에서 빌드 → JRE로 실행 (Java 21)
+FROM eclipse-temurin:21-jdk-alpine AS build
 WORKDIR /app
-# bcrypt 네이티브 빌드 대비 (alpine용 prebuild가 없을 때)
-RUN apk add --no-cache python3 make g++
-COPY package.json package-lock.json ./
-RUN npm ci
-COPY tsconfig.json tsconfig.build.json nest-cli.json ./
-COPY src ./src
-# AI_MODE=fixture로 띄울 때 필요한 AI 응답 fixture (실제 데이터 아님)
-COPY test/fixtures/ai ./test/fixtures/ai
-# 빌드 후 dev 의존성을 걷어 낸 node_modules를 그대로 넘긴다 (run 스테이지에 빌드 도구 불필요)
-RUN npm run build && npm prune --omit=dev
+# 의존성 층을 먼저 받아 소스만 바뀌면 캐시를 쓴다
+COPY gradlew settings.gradle build.gradle ./
+COPY gradle ./gradle
+RUN ./gradlew --no-daemon dependencies > /dev/null
+# 소스 + AI_MODE=fixture용 AI 응답 fixture(src/main/resources/fixtures, 실제 데이터 아님)
+COPY src/main ./src/main
+RUN ./gradlew --no-daemon bootJar && cp build/libs/skincare-backend-*.jar app.jar
 
-FROM node:20-alpine AS run
-ENV NODE_ENV=production
+FROM eclipse-temurin:21-jre-alpine AS run
+ENV APP_ENV=production
 WORKDIR /app
-COPY --from=build --chown=node:node /app/package.json ./package.json
-COPY --from=build --chown=node:node /app/node_modules ./node_modules
-COPY --from=build --chown=node:node /app/dist ./dist
-COPY --from=build --chown=node:node /app/test/fixtures/ai ./test/fixtures/ai
-COPY --chown=node:node docker/start.sh ./start.sh
-USER node
+RUN addgroup -S app && adduser -S app -G app
+COPY --from=build --chown=app:app /app/app.jar ./app.jar
+USER app
 EXPOSE 3000
 # DB까지 확인하는 경로 (DB 장애면 500)
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
   CMD wget -qO- http://127.0.0.1:3000/api/v1/system/status > /dev/null || exit 1
-CMD ["sh", "./start.sh"]
+# 마이그레이션은 앱 기동 시 Flyway가 먼저 적용한다 (실패하면 기동하지 않음)
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-jar", "app.jar"]

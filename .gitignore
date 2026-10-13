@@ -1,8 +1,8 @@
-# 의존성·빌드
-node_modules/
-dist/
-coverage/
-*.tsbuildinfo
+# 빌드
+build/
+.gradle/
+out/
+bin/
 
 # 비밀값 — .env.example만 커밋한다
 .env

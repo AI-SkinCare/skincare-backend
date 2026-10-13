@@ -1,0 +1,103 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '4.1.1'
+    id 'io.spring.dependency-management' version '1.1.7'
+    id 'com.diffplug.spotless' version '8.10.3'
+}
+
+group = 'com.aiskincare'
+version = '0.1.0'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    implementation 'org.springframework.boot:spring-boot-starter-flyway'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+    // Swagger(/api/docs, /api/docs-json) — 앱이 이 JSON으로 타입을 만든다
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.1'
+    // bcrypt만 쓴다 (Spring Security 필터 체인은 쓰지 않음)
+    implementation 'org.springframework.security:spring-security-crypto'
+    // JWT HS256
+    implementation 'com.nimbusds:nimbus-jose-jwt:10.10'
+    runtimeOnly 'org.postgresql:postgresql'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-jdbc-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+// 단위 테스트(DB 없음) / 통합 테스트(PostgreSQL 필요) / 실제 AI 계약 테스트(AI_CONTRACT_URL 필요)를 태그로 나눈다
+tasks.named('test') {
+    useJUnitPlatform { excludeTags 'integration', 'ai-contract' }
+}
+
+tasks.register('integrationTest', Test) {
+    description = 'PostgreSQL에 붙는 통합 테스트 (TRD §16)'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform { includeTags 'integration' }
+    shouldRunAfter tasks.named('test')
+}
+
+tasks.register('aiContractTest', Test) {
+    description = '실제 skincare-ai 서버와의 계약 테스트 (AI_CONTRACT_URL, AI_CONTRACT_TOKEN)'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform { includeTags 'ai-contract' }
+}
+
+tasks.withType(Test).configureEach {
+    testLogging {
+        events 'failed'
+        exceptionFormat 'full'
+    }
+}
+
+// 실행 중인 서버 API 전체 점검: ./gradlew smoke (SMOKE_BASE_URL)
+tasks.register('smoke', JavaExec) {
+    description = '실행 중인 서버의 API 전체 점검'
+    group = 'verification'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.aiskincare.backend.tools.SmokeFlow'
+}
+
+// k6용 합성 이미지: ./gradlew loadImage → load/.tmp/face.png
+tasks.register('loadImage', JavaExec) {
+    description = 'k6가 올릴 합성 이미지 생성'
+    group = 'application'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.aiskincare.backend.tools.LoadImage'
+    args 'load/.tmp/face.png'
+}
+
+// 개발용 시드: ./gradlew seed (production 거부)
+tasks.register('seed', JavaExec) {
+    description = '시드 계정 test01–40, test01에 완료 분석 25건'
+    group = 'application'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.aiskincare.backend.SkincareBackendApplication'
+    args '--seed'
+}
+
+spotless {
+    java {
+        target 'src/**/*.java'
+        googleJavaFormat('1.36.1')
+        removeUnusedImports()
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+}

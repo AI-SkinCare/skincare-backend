@@ -1,0 +1,79 @@
+# TRD §6 — 환경변수를 app.* 설정으로 옮긴다. 로컬은 .env를 읽는다 (cp .env.example .env).
+spring:
+  config:
+    import: optional:file:.env[.properties]
+  application:
+    name: skincare-backend
+  main:
+    banner-mode: off
+  web:
+    resources:
+      add-mappings: false
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 12MB
+      # 얼굴 이미지는 디스크에 닿지 않는다 — 임계값을 파일 상한보다 크게 둬서 임시 파일을 만들지 않는다 (TRD §15.1 NFR-PRI-01)
+      file-size-threshold: 11MB
+      # 인증·요청 제한 인터셉터가 먼저 돌고, 그 뒤에 파일을 읽는다 (TRD §10.1 처리 순서)
+      resolve-lazily: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  jackson:
+    default-property-inclusion: always
+
+server:
+  port: ${PORT:3000}
+  error:
+    whitelabel:
+      enabled: false
+  tomcat:
+    # 거절한 업로드의 남은 본문도 끝까지 읽어 클라이언트가 응답을 받게 한다
+    max-swallow-size: 13MB
+
+app:
+  env: ${APP_ENV:development}
+  database-url: ${DATABASE_URL:}
+  jwt:
+    access-secret: ${JWT_ACCESS_SECRET:}
+    refresh-secret: ${JWT_REFRESH_SECRET:}
+  cors-origin: ${CORS_ORIGIN:}
+  ai:
+    mode: ${AI_MODE:fixture}
+    base-url: ${AI_BASE_URL:}
+    internal-token: ${AI_INTERNAL_TOKEN:}
+    skin-timeout-ms: ${AI_SKIN_TIMEOUT_MS:20000}
+    rec-timeout-ms: ${AI_REC_TIMEOUT_MS:130000}
+    health-interval-ms: ${AI_HEALTH_INTERVAL_MS:30000}
+    fixture-scenario: ${AI_FIXTURE_SCENARIO:ok}
+  queue:
+    worker-concurrency: ${REC_WORKER_CONCURRENCY:1}
+    limit: ${REC_QUEUE_LIMIT:10}
+    max-wait-min: ${REC_QUEUE_MAX_WAIT_MIN:60}
+  analysis-daily-limit: ${ANALYSIS_DAILY_LIMIT:20}
+  login-rate-per-min: ${LOGIN_RATE_PER_MIN:10}
+  trust-proxy: ${TRUST_PROXY:true}
+  cookie-secure: ${COOKIE_SECURE:true}
+  seed-password: ${SEED_PASSWORD:}
+
+# Swagger는 운영에서도 연다 — 레포가 Public이라 숨길 정보가 없고, 앱이 타입 생성에 쓴다 (TRD §15)
+springdoc:
+  api-docs:
+    enabled: true
+    path: /api/docs-json
+    # 앱 타입 생성기 호환 — NestJS 때와 같은 OpenAPI 3.0 (docs/ios-integration.md)
+    version: openapi_3_0
+  swagger-ui:
+    enabled: true
+    path: /api/docs
+  default-produces-media-type: application/json
+
+# TRD §7.6 — JSON 로그 (requestId·userId는 MDC, 그 밖의 필드는 key-value). 이미지·설문 원문·토큰·본문은 남기지 않는다
+logging:
+  structured:
+    format:
+      console: logstash
+  level:
+    root: ${LOG_LEVEL:info}
