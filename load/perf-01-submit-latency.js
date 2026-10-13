@@ -1,6 +1,6 @@
 // TC-PERF-01 (NFR-PERF-01): 1명이 20회 제출 — 직전 분석이 끝난 뒤 다음 제출.
 // 제출 응답 시간(측정 포함) p50 ≤ 3초, p95 ≤ 5초.
-// TC-PERF-02(recommend_ms p95 ≤ 90초)는 끝난 뒤 npm run report:latency로 DB에서 집계한다.
+// TC-PERF-02(recommend_ms p95 ≤ 90초)는 끝난 뒤 load/latency-report.sql로 DB에서 집계한다.
 //
 //   k6 run -e BASE_URL=https://app.<도메인>/api/v1 -e SEED_PASSWORD=... [-e IMAGE=face.jpg] load/perf-01-submit-latency.js
 import { check } from 'k6';

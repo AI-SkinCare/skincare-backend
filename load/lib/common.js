@@ -4,7 +4,7 @@ import { sleep } from 'k6';
 
 export const BASE_URL = (__ENV.BASE_URL || 'http://localhost:3000/api/v1').replace(/\/+$/, '');
 export const PASSWORD = __ENV.SEED_PASSWORD || '';
-// 측정이 진짜 회귀 모델이면 얼굴 사진이 필요하다 (레포에 커밋 금지). 기본은 npm run load:image로 만든 합성 PNG
+// 측정이 진짜 회귀 모델이면 얼굴 사진이 필요하다 (레포에 커밋 금지). 기본은 ./gradlew loadImage로 만든 합성 PNG
 // open()은 이 파일(load/lib) 기준 상대 경로 — IMAGE는 절대 경로로 주는 것이 안전하다
 const IMAGE_PATH = __ENV.IMAGE || '../.tmp/face.png';
 const IMAGE = open(IMAGE_PATH, 'b');

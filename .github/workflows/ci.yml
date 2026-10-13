@@ -1,4 +1,4 @@
-# TRD §16.3 — develop·main 대상 PR과 푸시에서 lint·test·build·test:e2e
+# TRD §16.3 — develop·main 대상 PR과 푸시에서 형식 검사·단위 테스트·빌드·통합 테스트
 name: ci
 on:
   pull_request: { branches: [develop, main] }
@@ -13,17 +13,14 @@ jobs:
         ports: ['5432:5432']
         options: --health-cmd pg_isready --health-interval 5s --health-retries 10
     env:
+      # 통합 테스트 DB (이름에 test가 있어야 돈다). 그 밖의 설정은 테스트 코드가 고정 값으로 넣는다
       DATABASE_URL: postgres://test:test@localhost:5432/test
-      AI_MODE: fixture
-      NODE_ENV: test
-      JWT_ACCESS_SECRET: ci-access-secret-not-real
-      JWT_REFRESH_SECRET: ci-refresh-secret-not-real
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: npm }
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run test
-      - run: npm run build
-      - run: npm run test:e2e
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew spotlessCheck
+      - run: ./gradlew test
+      - run: ./gradlew bootJar
+      - run: ./gradlew integrationTest
