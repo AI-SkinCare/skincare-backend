@@ -15,44 +15,48 @@ iOS 앱과 AI 추론 서버 사이의 데이터 흐름을 담당하는 API 서�
 - 얼굴 이미지는 디스크에 저장하지 않음 (메모리로만 받아 AI 서버로 넘기고 측정 직후 폐기)
 
 ## 기술 스택
-- Node.js 20, TypeScript, NestJS 10
-- PostgreSQL 16, TypeORM 0.3 (마이그레이션)
+- Java 21, Spring Boot 4.1 (Spring MVC)
+- PostgreSQL 16, JdbcClient, Flyway (마이그레이션)
 - JWT(액세스 1시간 · 리프레시 14일, httpOnly 쿠키 + 네이티브 앱용 본문 전달), bcrypt
-- pino JSON 로그, Swagger(`/api/docs`)
-- Jest · supertest (단위·e2e), GitHub Actions CI
+- 구조화 JSON 로그, Swagger(`/api/docs`, OpenAPI 3.0)
+- JUnit · AssertJ (단위·PostgreSQL 통합), Gradle, GitHub Actions CI
+
+> 10/13 NestJS에서 Spring Boot로 전환했습니다 (API·DB 그대로). 이전 구현은 `archive/nestjs` 브랜치에 있습니다.
 
 ## 로컬 실행
+
+Java 21이 필요합니다 (macOS: `export JAVA_HOME=$(/usr/libexec/java_home -v 21)`). Gradle은 wrapper(`./gradlew`)가 받습니다.
 
 ```bash
 docker compose up -d db          # 로컬 PostgreSQL
 cp .env.example .env             # AI_MODE=fixture가 기본 (AI 서버 없이 개발)
-npm ci
-npm run migration:run
-npm run seed                     # test01~40@skincare.dev, test01에 완료 분석 25건
-npm run start:dev                # http://localhost:3000/api/docs
+./gradlew seed                   # test01~40@skincare.dev, test01에 완료 분석 25건
+./gradlew bootRun                # http://localhost:3000/api/docs (기동 시 마이그레이션 자동 적용)
 ```
 
 | 명령 | 내용 |
 |---|---|
-| `npm run lint` | ESLint (경고 0) |
-| `npm run test` | 단위 테스트 |
-| `npm run test:e2e` | e2e (DB 필요, `<DB이름>_test`를 자동 생성·마이그레이션) |
-| `npm run build` | 빌드 |
-| `npm run migration:generate -- src/database/migrations/<동사><대상>` | 엔티티 변경으로 마이그레이션 생성 |
-| `npm run smoke` | 실행 중인 서버의 전체 흐름 점검 (`SMOKE_BASE_URL`, 배포 직후·AI 연동 확인용) |
-| `npm run report:latency -- --since <ISO>` | 측정·대기·추천 소요 시간 분포 (성능 분석) |
+| `./gradlew spotlessApply` / `spotlessCheck` | 코드 형식 (google-java-format) |
+| `./gradlew test` | 단위 테스트 (DB 없음) |
+| `./gradlew integrationTest` | 통합 테스트 (DB 필요, `<DB이름>_test`를 자동 생성·마이그레이션) |
+| `./gradlew bootJar` | 실행 jar (`build/libs/`) |
+| `./gradlew smoke` | 실행 중인 서버의 전체 흐름 점검 (`SMOKE_BASE_URL`, 배포 직후·AI 연동 확인용) |
+| `./gradlew aiContractTest` | 실제 AI 서버와 계약 확인 (`AI_CONTRACT_URL`, `AI_CONTRACT_TOKEN`) |
+| `load/latency-report.sql` | 측정·대기·추천 소요 시간 분포 (psql로 실행, [load/README.md](load/README.md)) |
+
+마이그레이션은 `src/main/resources/db/migration/`에 `V<번호>__<설명>.sql`로 추가합니다 (이미 적용된 파일은 고치지 않음).
 
 부하 테스트(k6)는 [load/README.md](load/README.md), iOS 앱 연동 규칙은 [docs/ios-integration.md](docs/ios-integration.md)를 본다.
 
 - API: `http://localhost:3000/api/v1`, Swagger JSON: `/api/docs-json` (앱 타입 생성용)
-- iOS 시뮬레이터는 `localhost`, 실기기는 같은 Wi-Fi에서 Mac의 LAN IP로 접속 (`0.0.0.0`에서 listen)
+- iOS 시뮬레이터는 `localhost`, 실기기는 같은 Wi-Fi에서 Mac의 LAN IP로 접속 (모든 인터페이스에서 listen)
 - AI 서버 대신 고정 응답: `AI_MODE=fixture`, 요청마다 `X-Fixture-Scenario: ok | no-face | rec-timeout | rec-slow | ai-down` (production에선 무시)
 
 ## 배포
 정도희 자택 서버에서 Docker Compose(`web` nginx · `backend` · `db` · `cloudflared`)로 운영합니다. 외부에 여는 포트는 없고 Cloudflare Tunnel로만 들어옵니다.
 
 ```bash
-docker compose up -d --build     # 컨테이너 시작 시 마이그레이션 자동 실행
+docker compose up -d --build     # 앱 기동 시 Flyway 마이그레이션 자동 적용
 ```
 
 실제 AI 서버 연동은 `.env`에 `AI_MODE=real`, `AI_BASE_URL`, `AI_INTERNAL_TOKEN`을 넣고 재시작한 뒤 `GET /api/v1/system/status`의 `aiAvailable`을 확인합니다 (TRD §17.4).

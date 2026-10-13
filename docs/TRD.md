@@ -2,7 +2,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 대상 | `skincare-backend` (NestJS API · PostgreSQL · 추천 작업 큐 · Docker Compose) |
+| 대상 | `skincare-backend` (Spring Boot API · PostgreSQL · 추천 작업 큐 · Docker Compose) |
 | 근거 문서 | SC-01 요구사항 정의서, SC-02 시스템 설계서, SC-03 API 명세서, SC-04 DB 설계서, SC-05 화면 설계서, SC-06 협업 규칙, SC-07 WBS, SC-08 테스트 계획서 (모두 v1.0, 2026-10-01, 원본 `skincare-ai/docs/project/`) |
 | 작성 | 2026-10-10 · 구현 담당 이현승 · 리뷰 정도희 |
 | 용도 | Claude Code가 이 문서만 보고 백엔드를 구현·테스트할 수 있도록 팀 문서의 백엔드 관련 내용을 한곳에 모으고, 구현에 필요한 세부 결정을 보탠 문서. |
@@ -27,6 +27,7 @@
 | 2026-10-10 | §8.4 배포 서버 시드 절차, §16.1 실제 AI 계약 테스트·스모크, §17.4 스모크 단계, §18.1 Phase 7 |
 | 2026-10-12 | §4 image-size 2.x, 하위 의존성 보안 패치(overrides) |
 | 2026-10-12 | §12.2 Cloudflare 524를 timeout으로 분류 (재시도 금지) |
+| 2026-10-13 | **NestJS → Spring Boot 4.1 (Java 21) 전환** [구현 결정, 팀 합의 필요] — §4·5·6·7·8.2–8.4·10.1·16·17·18. API 계약·DDL 변경 없음. 환경변수 `NODE_ENV` → `APP_ENV`, JWT 비밀키 32자 이상, `LOG_LEVEL` 값은 error·warn·info·debug |
 
 ---
 
@@ -89,7 +90,7 @@ iOS 앱(Swift, 정도희), nginx 설정 세부(정도희), AI 추론·금칙 필
 ┌──────────── 정도희 자택 서버 · Docker Compose ────────────┐
 │ cloudflared (app.<도메인> → web:80)                        │
 │   → web: nginx 1.27 (/api → backend 프록시, 업로드 12MB 제한)     │
-│       → backend: NestJS :3000 (외부 비공개)                │
+│       → backend: Spring Boot :3000 (외부 비공개)           │
 │           ├─ db: PostgreSQL 16 (볼륨 pgdata, 외부 비공개)   │
 │           └─ HTTPS + X-Internal-Token ─────────────┐       │
 └────────────────────────────────────────────────────│───────┘
@@ -127,112 +128,102 @@ FE ──GET /analyses/{id}──▶ BE ─전체 결과─▶ FE
 
 ## 4. 기술 스택
 
+10/13 NestJS → **Spring Boot**로 전환했다 [구현 결정, 팀 합의 필요]. 팀 문서(SC-02·SC-06·SC-07·개발운영계획서)는 아직 NestJS로 적혀 있다. API 계약(경로·필드·열거형·에러 코드·상태 코드)과 DDL은 그대로이고, NestJS 구현은 `archive/nestjs` 브랜치에 보관한다.
+
 | 영역 | 선택 | 비고 |
 |---|---|---|
-| 런타임 | Node.js 20, TypeScript(strict) | 팀 문서 기준 |
-| 프레임워크 | NestJS 10 (`@nestjs/platform-express`) | 11로 올리지 않음 |
-| ORM·DB | TypeORM 0.3 + `pg`, PostgreSQL 16 | `synchronize: false` 고정 |
-| 검증 | `class-validator`, `class-transformer` | |
-| 문서 | `@nestjs/swagger` | `/api/docs`, JSON `/api/docs-json` (앱은 이 JSON으로 swift-openapi-generator 등을 써서 타입을 만들 수 있음) |
-| 설정 | `@nestjs/config` + 기동 시 env 검증 | [구현 결정] 검증 라이브러리는 Joi 또는 class-validator 중 택1 |
-| 인증 | `@nestjs/jwt`, `@nestjs/passport`, `passport-jwt`, `cookie-parser` | |
-| 해시 | `bcrypt`(네이티브, `$2b$` 접두) | [구현 결정] `bcryptjs`는 구버전이 `$2a$`를 만들어 TC-SEC-02와 어긋날 수 있음 |
-| 업로드 | multer `memoryStorage` (Nest `FileInterceptor`) | 디스크 옵션 사용 금지 |
-| 스케줄 | `@nestjs/schedule` | 워커 폴링, 헬스체크, 장기 대기 만료, 토큰 정리 |
-| ID | ULID (`ulidx` 등) | [구현 결정] |
-| 이미지 헤더 | `image-size` 2.x (버퍼에서 가로·세로만 읽음) | [구현 결정] 디코딩·저장 없음. 2.x 기본 진입점은 파일을 읽지 않고, JPEG·PNG 외 파서는 꺼 둔다 |
-| AI HTTP | Node 내장 `fetch` + `FormData`/`Blob` + `AbortSignal.timeout` | [구현 결정] 추가 의존성 없음 |
-| 로깅 | `nestjs-pino`(pino) JSON 로그 + redact | [구현 결정] |
-| 요청 컨텍스트 | `AsyncLocalStorage`(node 내장) 또는 `nestjs-cls` | [구현 결정] requestId 전파 |
-| 테스트 | Jest(단위), Jest + supertest(e2e), PostgreSQL 서비스 컨테이너 | |
+| 런타임 | Java 21 (Temurin) | |
+| 프레임워크 | Spring Boot 4.1 (Spring MVC, 내장 Tomcat) | `spring-boot-starter-webmvc` |
+| DB 접근 | `JdbcClient`(spring-boot-starter-jdbc) + HikariCP, PostgreSQL 16 | [구현 결정] ORM 없이 SQL 그대로 — §13 큐 SQL이 대부분이라 |
+| 마이그레이션 | Flyway (`src/main/resources/db/migration`) | 앱 기동 시 적용. 스키마 자동 생성 없음 |
+| 검증 | Jakarta Bean Validation(`spring-boot-starter-validation`) + 설문은 직접 검증 | 오류는 422 E4002 |
+| JSON | Jackson 3 (Boot 기본) | [구현 결정] 문자열 ↔ 숫자·불리언 자동 변환 끔 (타입이 다르면 E4002) |
+| 문서 | springdoc-openapi 3.1 | `/api/docs`, JSON `/api/docs-json` — **OpenAPI 3.0으로 출력** (앱은 이 JSON으로 swift-openapi-generator 등을 써서 타입을 만들 수 있음) |
+| 설정 | `@ConfigurationProperties` record + 기동 시 검증 | `.env`는 `spring.config.import`로 읽음 |
+| 인증 | JWT HS256 — `nimbus-jose-jwt` | [구현 결정] 키 256비트 이상이어야 해서 비밀키 32자 이상 |
+| 해시 | `spring-security-crypto` `BCryptPasswordEncoder($2B, 12)` | `$2b$12$` 접두 (TC-SEC-02). Spring Security 필터 체인은 쓰지 않음 |
+| 업로드 | Servlet multipart, **메모리에서만** | `file-size-threshold`(11MB) > 최대 파일(10MB)이라 디스크에 쓰지 않음. `resolve-lazily`로 인증·제한 검사 뒤에 파싱 |
+| 스케줄 | `ThreadPoolTaskScheduler` + `@Scheduled` | 워커 폴링, 헬스체크, 장기 대기 만료, 토큰 정리 |
+| ID | ULID (직접 구현, `SecureRandom`) | [구현 결정] 추가 의존성 없음 |
+| 이미지 헤더 | 직접 파싱 (PNG IHDR, JPEG SOFn) | [구현 결정] 디코딩·저장 없음 |
+| AI HTTP | Spring `RestClient` + JDK `HttpClient` | [구현 결정] 연결 5초, 읽기 타임아웃은 측정·추천별 |
+| 로깅 | Spring Boot 구조화 로그(logstash JSON) + MDC(requestId·userId) | [구현 결정] 금지 항목은 애초에 로그에 넣지 않는다 (§7.6) |
+| 테스트 | JUnit 6 + AssertJ(단위), `@SpringBootTest` + 실제 HTTP + PostgreSQL(통합) | 태그로 분리 (§16) |
+| 빌드·형식 | Gradle 9 (wrapper), Spotless + google-java-format | |
 | 부하 | k6 (`load/`) | WBS 4.8, 11/10~ |
-| 린트 | NestJS 기본 ESLint + Prettier(printWidth 100, singleQuote) | |
 
 Redis·BullMQ 등 별도 큐 인프라는 쓰지 않는다(SC-02 §4.2).
-
-보안 패치 [구현 결정]: Nest 10을 유지하므로, Nest가 고정한 하위 의존성 중 취약 버전은 `package.json`의 `overrides`로 **같은 메이저의 패치 버전**을 쓴다(`multer`·`body-parser`·`qs`·`lodash`·`js-yaml`, 10/12). 남은 `npm audit` 3건은 메이저 업그레이드로만 고쳐지고 우리가 쓰지 않는 기능이다 — `@nestjs/core`(SSE 메시지 type·id 주입, SSE 미사용), `file-type`(Nest `FileTypeValidator`, 미사용 — 시그니처는 직접 검사), `uuid`(v3/v5/v6의 buf 인자, 미사용).
 
 ---
 
 ## 5. 프로젝트 구조 [구현 결정]
 
-10/10 구현 기준 실제 구조. 파일을 옮기거나 더하면 이 트리도 고친다.
+10/13 구현 기준 실제 구조. 파일을 옮기거나 더하면 이 트리도 고친다. 패키지 `com.aiskincare.backend` 아래.
 
 ```
 skincare-backend/
 ├─ CLAUDE.md · README.md        # README 첫 줄: skincare-ai/docs/project/ 링크
-├─ docs/TRD.md                  # 이 문서
+├─ docs/TRD.md · docs/ios-integration.md
 ├─ .env.example                 # 가짜 값만
-├─ Dockerfile · docker/start.sh # 시작 시 마이그레이션 → 앱
+├─ build.gradle · settings.gradle · gradlew · gradle/wrapper/
+├─ Dockerfile                   # JDK 빌드 → JRE 실행, 기동 시 Flyway
 ├─ docker-compose.yml · nginx/default.conf
 ├─ .github/                     # ISSUE_TEMPLATE·PR 템플릿(skincare-ai에서 복사), workflows/ci.yml
-├─ load/                        # k6 스크립트(perf-01·03·04), lib/common.js, README (Phase 7)
-├─ src/
-│  ├─ main.ts                   # 로거, configureApp, shutdown hooks, 0.0.0.0 listen
-│  ├─ app.setup.ts              # X-Request-Id(맨 먼저)·trust proxy·helmet·쿠키·CORS·prefix·Swagger (e2e와 공유)
-│  ├─ app.module.ts             # 전역 필터·봉투 인터셉터·ValidationPipe(422 E4002)
-│  ├─ config/                   # app-config.ts(env 스키마·검증 → 타입 있는 APP_CONFIG), constants.ts
-│  ├─ database/
-│  │  ├─ data-source.ts         # TypeORM CLI용
-│  │  ├─ typeorm-options.ts · entities.ts · transformers.ts(NUMERIC·BIGINT) · raw-query.ts
-│  │  ├─ migrations/            # {타임스탬프}-{동사}{대상}.ts
-│  │  ├─ seeds/                 # seed.ts(npm run seed), seed-data.ts(e2e와 공유)
-│  │  └─ scripts/latency-report.ts  # 응답 시간 분포 (npm run report:latency)
+├─ load/                        # k6 스크립트(perf-01·03·04), lib/common.js, latency-report.sql·latency-rows.sql, README
+├─ src/main/java/…/
+│  ├─ SkincareBackendApplication.java   # --seed면 웹 없이 시드만
+│  ├─ config/                   # AppProperties(env 검증), Constants, DataSourceConfig(DATABASE_URL 파싱·Flyway),
+│  │                            # WebConfig(/api/v1 접두·인터셉터 순서·필터), JacksonConfig, SchedulingConfig,
+│  │                            # OpenApiConfig·NullableRefCustomizer(봉투·에러 응답·보안·nullable 참조)
 │  ├─ common/
 │  │  ├─ enums/                 # 부록 A 단일 출처 (코드 ↔ AI 라벨)
-│  │  ├─ errors/                # error-codes.ts, api.exception.ts, api-exception.filter.ts
-│  │  ├─ interceptors/ · middleware/ · logging/ · swagger/
-│  │  ├─ validation/            # 검증 오류 → detail.fields, ParseUlidPipe
-│  │  ├─ http/app-request.ts    # req.id·req.user 타입
-│  │  ├─ utils/                 # time.ts(KST·ISO), client-ip.ts, ulid.ts, sleep.ts(지연 주입 토큰)
-│  │  └─ common.module.ts       # SLEEP 제공
-│  ├─ auth/                     # controller, service, refresh-token.service(교체·재사용 감지·정리 배치),
-│  │                            # jwt.strategy, guards/(jwt-auth, login-rate), login-rate-limiter,
-│  │                            # refresh-cookie.ts, client-type.ts([앱 협의] X-Client), token-hash.ts, dto/
-│  ├─ users/                    # controller, service, user.entity
+│  │  ├─ error/                 # ErrorCode, ApiException, GlobalExceptionHandler, EnvelopeErrorController(/error도 봉투)
+│  │  ├─ web/                   # ApiEnvelope·ErrorEnvelope, RequestIdFilter, RequestLogFilter, SecurityHeadersFilter,
+│  │  │                         # ClientIp, @PublicApi, @CurrentUser, @ApiErrorCodes
+│  │  ├─ validation/FieldIssue  # 검증 오류 → detail.fields
+│  │  └─ util/                  # TimeUtil(KST·ISO), Ulid, MaskEmail, Sleeper(지연 주입)
+│  ├─ auth/                     # AuthController·AuthService, RefreshTokenService(교체·재사용 감지·정리 배치),
+│  │                            # AuthInterceptor, LoginRateLimiter, JwtTokens, RefreshCookies, ClientType([앱 협의] X-Client), TokenHash, dto/
+│  ├─ users/                    # UsersController·UsersService·UserRepository
 │  ├─ analyses/
-│  │  ├─ analyses.controller.ts · analyses.service.ts
-│  │  ├─ analysis-presenter.ts  # DB 행 → API 응답
-│  │  ├─ scoring.ts             # 점수·등급 순수 함수 (§11)
-│  │  ├─ survey.ts              # survey 파싱·검증·정규화
-│  │  ├─ guards/                # analysis-limit(+submission-lock), queue-capacity, ai-availability
-│  │  ├─ pipes/                 # analysis-submission.pipe(처리 순서 6), image-signature
-│  │  ├─ dto/ · entities/
-│  ├─ recommendation/
-│  │  ├─ recommendation.worker.ts
-│  │  ├─ recommendation-queue.repository.ts + .module.ts  # §13 SQL (analyses·system도 사용)
-│  │  └─ queue-maintenance.service.ts        # 장기 대기 만료, 기동 복구
-│  ├─ ai-client/
-│  │  ├─ ai-client.interface.ts · ai-client.module.ts (AI_CLIENT 토큰)
-│  │  ├─ http-ai-client.ts · fixture-ai-client.ts · fixture-scenario.store.ts
-│  │  ├─ ai-error.ts            # 분류: http / connection / timeout / invalid_response
-│  │  ├─ ai-error.mapper.ts     # §12.5 표
-│  │  ├─ ai-response.schemas.ts # AI 응답 검증
-│  │  └─ ai-transform.ts        # 설문·지표 변환, 라벨→코드
-│  └─ system/                   # ai-health.service.ts, system.controller.ts
-└─ test/
-   ├─ fixtures/ai/              # skin-metrics.ok.json, recommend.ok.json (skincare-ai 실제 출력)
-   ├─ fixtures/images.ts        # 합성 이미지 생성 (실제 얼굴 사진 커밋 금지)
-   ├─ e2e/                      # *.e2e-spec.ts, helpers/(test-app, factories, capture-stdout), global-setup
-   ├─ smoke/smoke-flow.ts       # npm run smoke
-   └─ jest-e2e.json
+│  │  ├─ AnalysesController · AnalysesService · AnalysisRepository · AnalysisRows
+│  │  ├─ AnalysisPresenter      # DB 행 → API 응답
+│  │  ├─ Scoring                # 점수·등급 순수 함수 (§11)
+│  │  ├─ SurveyParser · NormalizedSurvey · Submission(처리 순서 6) · ImageInspector(시그니처·크기)
+│  │  ├─ AnalysisGuardInterceptor · @AnalysisGuards · SubmissionLock   # 처리 순서 2–4
+│  │  └─ dto/
+│  ├─ recommendation/           # RecommendationWorker, RecommendationQueueRepository(§13 SQL),
+│  │                            # QueueMaintenance(장기 대기 만료·기동 복구), BackgroundJobs(기동 순서)
+│  ├─ aiclient/                 # AiClient → HttpAiClient(real) / FixtureAiClient(fixture), FixtureScenarioStore,
+│  │                            # AiError(분류), AiErrorMapper(§12.5 표), AiResponseParser(응답 검증), AiTransform(설문·지표 변환)
+│  ├─ system/                   # AiHealthService, SystemController
+│  └─ seed/                     # SeedRunner(./gradlew seed), SeedData(통합 테스트와 공유)
+├─ src/main/resources/
+│  ├─ application.yml
+│  ├─ db/migration/V1__create_initial_schema.sql
+│  └─ fixtures/ai/              # skin-metrics.ok.json, recommend.ok.json (skincare-ai 실제 출력, AI_MODE=fixture가 씀)
+└─ src/test/java/…/
+   ├─ support/                  # IntegrationTestBase, TestHttp, Factories, TestImages(합성 이미지), FakeSleeper, TestDatabase, LogLines
+   ├─ **/*Test.java             # 단위 (DB 없음)
+   ├─ **/*IT.java               # 통합 (@Tag("integration"), PostgreSQL)
+   └─ tools/                    # SmokeFlow(./gradlew smoke), LoadImage(./gradlew loadImage)
 ```
 
-파일 이름은 kebab-case (`ai-client.service.ts`, `analysis-presenter.ts`).
+클래스는 Java 관례대로 PascalCase, 패키지는 기능별(소문자). SQL 파일은 `V<번호>__<설명>.sql`.
 
 ---
 
 ## 6. 환경변수
 
-`.env.example`에는 가짜 값만 커밋하고 `.env`는 `.gitignore`. 실제 값은 담당자에게 1:1로만 전달한다. 비밀키 생성: `openssl rand -base64 48`.
+`.env.example`에는 가짜 값만 커밋하고 `.env`는 `.gitignore`. 실제 값은 담당자에게 1:1로만 전달한다. 비밀키 생성: `openssl rand -base64 48`. 앱은 실행 위치의 `.env`를 읽고, 같은 이름의 환경변수가 있으면 환경변수가 우선한다.
 
 | 변수 | 예 | 설명 |
 |---|---|---|
-| `NODE_ENV` | development \| test \| production | [구현 결정] production에서만 fixture 헤더 무시, 시드 금지 |
+| `APP_ENV` | development \| test \| production | [구현 결정] production에서만 fixture 헤더 무시, 시드 금지, 쿠키 항상 Secure. Docker 이미지 기본값 production |
 | `PORT` | 3000 | |
-| `DATABASE_URL` | `postgres://skincare:***@db:5432/skincare` | |
-| `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | 48바이트 난수 | 서로 다른 값 (기동 시 검증) |
-| `CORS_ORIGIN` | `https://app.<도메인>` | 로컬 `http://localhost:5173`. iOS 앱은 CORS와 무관(웹에서 부를 때만 의미) |
+| `DATABASE_URL` | `postgres://skincare:***@db:5432/skincare` | 앱이 JDBC URL로 바꾼다 |
+| `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | 48바이트 난수 | 서로 다른 값, **32자 이상** (기동 시 검증) |
+| `CORS_ORIGIN` | `https://app.<도메인>` | 비우면 CORS 끔. iOS 앱은 CORS와 무관(웹에서 부를 때만 의미) |
 | `AI_MODE` | fixture \| real | 로컬 기본 fixture |
 | `AI_BASE_URL` | `https://ai.<도메인>` | real일 때 필수 |
 | `AI_INTERNAL_TOKEN` | 48바이트 난수 | AI 서버와 같은 값. real일 때 필수 |
@@ -244,16 +235,16 @@ skincare-backend/
 | `REC_QUEUE_MAX_WAIT_MIN` | 60 | 초과 시 failed E3001 |
 | `ANALYSIS_DAILY_LIMIT` | 20 | KST 00:00 기준. 스테이징 성능 테스트 때 100 |
 | `LOGIN_RATE_PER_MIN` | 10 | IP당, CF-Connecting-IP 기준 |
-| `TRUST_PROXY` | true | nginx·터널 뒤 실제 IP |
+| `TRUST_PROXY` | true | `CF-Connecting-IP`가 없을 때 `X-Forwarded-For` 첫 값을 쓸지 |
 | `AI_FIXTURE_SCENARIO` | ok | ok \| no-face \| rec-timeout \| rec-slow \| ai-down |
 | `COOKIE_SECURE` | true | [구현 결정] production에선 항상 true. 로컬 HTTP 개발에서만 false 허용 |
-| `LOG_LEVEL` | info | [구현 결정] |
+| `LOG_LEVEL` | info | [구현 결정] error \| warn \| info \| debug |
 | `SEED_PASSWORD` | (개발용 값) | [구현 결정] 시드 계정 공통 비밀번호. production에선 시드 자체가 거부됨 |
 
 추가 규칙 [구현 결정]:
 
-- 기동 시 검증: 필수값 누락, `AI_MODE=real`인데 `AI_BASE_URL`/`AI_INTERNAL_TOKEN` 없음, 두 JWT 비밀키가 같음, `REC_WORKER_CONCURRENCY≠1` → 즉시 종료.
-- 토큰 수명(액세스 3600초, 리프레시 14일), 워커 폴링 1초, 재시도 대기 5초, 장기 대기 점검 1분은 코드 상수.
+- 기동 시 검증: 필수값 누락, `APP_ENV`·`AI_MODE`·`AI_FIXTURE_SCENARIO` 값 오류, `AI_MODE=real`인데 `AI_BASE_URL`/`AI_INTERNAL_TOKEN` 없음, 두 JWT 비밀키가 같거나 32자 미만, `REC_WORKER_CONCURRENCY≠1` → 즉시 종료. 오류 메시지에는 변수 이름만 넣고 값은 넣지 않는다.
+- 토큰 수명(액세스 3600초, 리프레시 14일), 워커 폴링 1초, 재시도 대기 5초, 장기 대기 점검 1분은 코드 상수(`config/Constants`).
 
 ---
 
@@ -274,10 +265,10 @@ skincare-backend/
 { "success": false, "error": { "code": "E2001", "message": "얼굴을 찾지 못했어요. 정면에서 다시 찍어 주세요.", "detail": null } }
 ```
 
-- 성공 봉투는 전역 인터셉터가 씌운다. **204는 본문 없음.**
-- 실패는 전역 예외 필터 하나가 만든다. 서비스 코드는 `throw new ApiException(ErrorCode.E4003)` 형태만 쓰고, Nest 기본 예외(`NotFoundException` 등)·라이브러리 예외도 필터에서 아래 표의 코드로 바꾼다. 매핑되지 않는 예외는 500 E4001 + ERROR 로그(스택·requestId 포함, 요청 본문 제외).
+- 성공 봉투는 컨트롤러가 `ApiEnvelope.ok(data)`로 돌려준다 [구현 결정]. **204는 본문 없음.**
+- 실패는 전역 예외 처리(`GlobalExceptionHandler`) 하나가 만든다. 서비스 코드는 `throw new ApiException(ErrorCode.E4003)` 형태만 쓰고, Spring 기본 예외(경로 없음·메서드 불일치·본문 파싱 실패·업로드 한도 등)·라이브러리 예외도 여기서 아래 표의 코드로 바꾼다. 필터·Tomcat 단계 오류가 가는 `/error`도 같은 봉투로 바꾼다(`EnvelopeErrorController`). 매핑되지 않는 예외는 500 E4001 + ERROR 로그(스택·requestId 포함, 요청 본문 제외).
 - `message`는 **사용자에게 그대로 보여줘도 되는 문장**, `detail`은 개발용(화면 비표시).
-- Swagger에 봉투 구조가 그대로 나오도록 응답 데코레이터(`allOf` + `getSchemaPath`)를 만든다 — 앱이 타입을 만들 때 이것에 의존한다 [구현 결정].
+- Swagger에 봉투 구조가 그대로 나오도록 응답 타입을 `ApiEnvelope<T>`로 선언하고, 실패 응답은 `@ApiErrorCodes`로 상태별 `ErrorEnvelope`를 붙인다 — 앱이 타입을 만들 때 이것에 의존한다 [구현 결정]. 출력은 OpenAPI 3.0이고, null일 수 있는 참조 필드(`previous`·`delta`·`error`)는 `{ type: object, nullable: true, allOf: [$ref] }`로 낸다.
 
 ### 7.3 에러 코드
 
@@ -311,15 +302,15 @@ E4004 사유별 message·detail [구현 결정]:
 - E3001에는 `Retry-After: 30`, E3003에는 `Retry-After: 60`을 붙인다 (SC-03 재시도 열) [구현 결정].
 - 문구는 SC-05 §4 문구 규칙을 지킨다: "진단·치료·처방·완치·개선됩니다·효과가 있습니다·질환명·정상/비정상" 금지. 새 문구는 PR에서 손승우 확인.
 - E4002 `detail` 형식 [구현 결정]: `{ "fields": [ { "field": "survey.gender", "reason": "required" } ] }` (TC-ANA-02: detail에 gender). 그 외 코드의 detail은 `null`. production에서 E4001 detail은 항상 `null`.
-- `ValidationPipe`의 기본 400을 쓰지 않는다. `exceptionFactory`로 **422 E4002**를 던진다. 옵션: `transform: true`, `whitelist: true`(모르는 필드는 제거), `forbidNonWhitelisted: false` [구현 결정].
+- Spring 기본 400(검증 실패·본문 파싱 실패·타입 불일치·필수 파라미터 없음)을 쓰지 않고 **422 E4002**로 바꾼다. 모르는 필드는 무시하고, 문자열 ↔ 숫자·불리언 자동 변환은 하지 않는다(타입이 다르면 E4002) [구현 결정].
 
 ### 7.4 필드·시간·ID·페이지
 
 | 항목 | 규칙 |
 |---|---|
 | JSON 필드 | camelCase. 열거형 **값**은 소문자 snake_case (`full_face`, `cheek_left`) |
-| DB | snake_case. 엔티티마다 `name:`을 명시 [구현 결정] (네이밍 전략 패키지 추가 안 함) |
-| 시간 | 저장 `TIMESTAMPTZ`(UTC). 응답 ISO 8601 UTC `2026-10-15T09:12:33Z` — 밀리초 제거 [구현 결정] (`common/utils/time.ts`의 `toIsoUtc`) |
+| DB | snake_case. SQL에 컬럼 이름을 그대로 쓴다 [구현 결정] (ORM 매핑 없음) |
+| 시간 | 저장 `TIMESTAMPTZ`(UTC). 응답 ISO 8601 UTC `2026-10-15T09:12:33Z` — 밀리초 제거 [구현 결정] (`common/util/TimeUtil.toIsoUtc`) |
 | KST | 일일 한도·배치 시각에만 사용. 한국은 서머타임이 없으므로 UTC+9 고정 계산 |
 | 분석 ID | ULID 26자. 경로 파라미터가 ULID 형식(`^[0-9A-HJKMNP-TV-Z]{26}$`)이 아니면 **404 E4003** (422 아님 — 존재 여부를 흘리지 않음) [구현 결정] |
 | 사용자 ID | BIGSERIAL 숫자 |
@@ -327,15 +318,16 @@ E4004 사유별 message·detail [구현 결정]:
 
 ### 7.5 X-Request-Id
 
-- 미들웨어에서 요청 헤더 `X-Request-Id`가 `^[A-Za-z0-9._-]{1,64}$`이면 그대로, 아니면 UUID v4 생성 [구현 결정]. iOS 앱은 요청마다 생성해서 보낸다 [앱 협의].
+- 가장 바깥 필터(`RequestIdFilter`)에서 요청 헤더 `X-Request-Id`가 `^[A-Za-z0-9._-]{1,64}$`이면 그대로, 아니면 UUID v4 생성 [구현 결정]. iOS 앱은 요청마다 생성해서 보낸다 [앱 협의].
 - **모든 응답(에러 포함)**에 `X-Request-Id` 헤더. 백엔드 → AI 호출에도 같은 값 전달.
-- 워커 작업은 요청 맥락이 없으므로 작업마다 새 UUID를 만들고 로그에 `analysisId`를 같이 남긴다.
+- 워커 작업은 요청 맥락이 없으므로 작업마다 새 UUID를 만들고 로그에 `analysisId`를 같이 남긴다 (MDC).
 
 ### 7.6 로깅 (NFR-PRI-02, NFR-OBS-01)
 
-- JSON 로그. 공통 필드: `requestId`, `method`, `route`, `status`, `durationMs`, `userId`(있으면).
+- JSON 로그(Spring Boot 구조화 로그, logstash 형식). 요청마다 `request completed` 한 줄: `method`, `route`, `status`, `durationMs`. `requestId`·`userId`(있으면)·워커의 `analysisId`는 MDC로 모든 줄에 붙는다 [구현 결정].
+- MDC에 있는 키(`requestId`·`userId`·`analysisId`)를 로그 key-value로 또 넣지 않는다 — 구조화 로그가 키 중복으로 그 줄을 버린다 [구현 결정].
 - **절대 기록하지 않음**: 이미지(버퍼·base64·파일명 포함), 설문 원문(`note`, `currentProducts` 등 전체), 비밀번호, 액세스·리프레시 토큰, 쿠키, `X-Internal-Token`, 요청/응답 본문 전체.
-- pino `redact`: `req.headers.authorization`, `req.headers.cookie`, `res.headers["set-cookie"]`, `*.password`, `*.accessToken`, `*.refreshToken`, `*.survey`, `*.note`.
+- 요청·응답 헤더와 본문은 로그 대상이 아니다(필터가 메서드·경로·상태·시간만 남김). 서비스 로그는 위 항목을 key-value로 넣지 않는다 — TC-PRI-02가 전체 흐름 로그에서 확인한다.
 - 이메일은 마스킹 `d***@gmail.com` (첫 글자 + `***` + `@도메인`).
 - AI 오류는 HTTP 상태·에러 코드·소요 시간만 남기고 AI 응답 본문 전체는 남기지 않는다. AI 응답 검증 실패는 실패한 필드 경로와 이유만 남긴다.
 - ERROR 로그 대상: AI 401(내부 토큰 불일치), AI 422 E4002(백엔드 변환 버그), AI 응답 스키마 위반, 미처리 예외.
@@ -436,31 +428,32 @@ CREATE TABLE recommendations (
 
 0–1 원본을 저장하는 이유: 추천 API에 그대로 다시 넘기고, 최종 성능 분석에서 반올림 손실 없이 쓰기 위해서. 0–100 변환은 응답 시점에 한다.
 
-### 8.2 TypeORM 주의
+### 8.2 DB 접근 주의 [구현 결정]
 
-- **NUMERIC은 문자열로 돌아온다.** `confidence`와 지표 4개 컬럼 모두에 `transformer: { to: (v) => v, from: (v) => (v === null ? null : Number(v)) }`. 빠뜨리면 점수 계산이 문자열 연결로 깨진다.
-- BIGSERIAL(`users.id`, `refresh_tokens.id`)도 `pg`가 문자열로 돌려준다. 엔티티에서 number로 변환하는 transformer를 쓰고, JWT `sub`에도 number를 넣는다 [구현 결정].
+- ORM 없이 `JdbcClient`로 SQL을 쓴다. 행은 record(`AnalysisRows` 등)로 직접 매핑한다.
+- **NUMERIC**(`confidence`, 지표 4개)은 `getDouble`로 읽는다. 점수는 읽은 값을 다시 bp로 확정해서 계산한다(§11).
+- BIGSERIAL(`users.id`, `refresh_tokens.id`)은 `long`. `COUNT(*)`는 `Long`으로 읽는다. JWT `sub`에는 사용자 id 문자열.
 - `skin_metrics`는 복합 PK(`analysis_id`, `roi`).
-- `synchronize: true` 금지(모든 환경). `migrationsRun`은 쓰지 않고 컨테이너 시작 스크립트에서 마이그레이션을 실행한다(§17).
+- 스키마 자동 생성·변경 없음(Flyway만). 앱 기동 시 Flyway가 미적용 마이그레이션을 먼저 적용하고, 실패하면 앱이 뜨지 않는다(§17).
 - 상태·열거형 컬럼은 varchar + CHECK. Postgres enum 타입을 만들지 않는다.
-- 여러 테이블을 쓰는 작업(분석 생성, 추천 저장)은 하나의 트랜잭션.
-- 큐 SQL(§13.3)은 `FOR UPDATE SKIP LOCKED`를 쓰므로 QueryBuilder 대신 raw query로 쓴다.
-- 연결 풀 10, 앱 연결에 `statement_timeout` 5초 (마이그레이션·시드 연결은 제외) [구현 결정].
+- 여러 테이블을 쓰는 작업(분석 생성, 추천 저장, 토큰 교체)은 `TransactionTemplate` 트랜잭션 하나.
+- 큐 SQL(§13.3)은 `FOR UPDATE SKIP LOCKED`를 그대로 쓴다.
+- 연결 풀 10(HikariCP), 앱 연결에 `statement_timeout` 5초·`TIME ZONE 'UTC'`. 마이그레이션 연결은 풀을 쓰지 않아 제한이 없다.
 
 ### 8.3 마이그레이션
 
-- TypeORM 마이그레이션만 사용. 파일 이름 `{타임스탬프}-{동사}{대상}.ts` (예: `1727740800000-CreateAnalyses.ts`).
-- 첫 마이그레이션은 §8.1 DDL을 그대로 옮긴다(테이블별로 나눠도 됨).
+- Flyway만 사용. 파일 `src/main/resources/db/migration/V<번호>__<설명>.sql` (예: `V2__add_analyses_index.sql`). **적용된 파일은 고치지 않는다** — 바꿀 것이 있으면 새 번호로 추가한다(체크섬이 달라지면 기동 실패).
+- `V1__create_initial_schema.sql`은 §8.1 DDL 그대로다(NestJS 때 TypeORM 마이그레이션과 같은 스키마).
 - 스키마를 바꾸는 PR에는 마이그레이션 + SC-04 문서 수정이 함께 들어가야 한다(명세 변경 절차 §18.3).
-- npm 스크립트: `migration:run`, `migration:revert`, `migration:generate`, `migration:create`.
+- NestJS 버전으로 이미 스키마가 만들어진 DB는 Flyway 이력 테이블이 없어 V1이 충돌한다. 개발 DB는 지우고 다시 만들고, 운영 DB가 이미 있으면 `baseline`으로 V1을 적용된 것으로 표시한다.
 
-### 8.4 시드 (`npm run seed`)
+### 8.4 시드 (`./gradlew seed`)
 
-- `NODE_ENV=production`이면 즉시 종료.
+- `APP_ENV=production`이면 즉시 종료. `SEED_PASSWORD`가 없어도 종료.
 - 계정 `test01@skincare.dev` ~ `test40@skincare.dev` (동시 요청 테스트용). 비밀번호는 `SEED_PASSWORD`, 동의 시각 4개 기록.
 - `test01`에 **완료(done) 분석 25건** — 날짜를 최근 수 주에 분산, `is_demo=false`(이력·추이 화면 확인용), `full_face` + 일부 ROI 지표, 설문, 추천 행 포함. TC-HIS-01(1쪽 20건, 2쪽 5건)이 이 데이터로 돈다.
 - 다시 실행해도 안전하게(시드 계정 삭제 후 재생성) [구현 결정].
-- 배포 서버(`NODE_ENV=production`)에서는 시드가 거부된다. 성능 테스트 기간에만 일회용 컨테이너로 명시적으로 넣고 끝나면 지운다 [구현 결정]: `docker compose run --rm -e NODE_ENV=development backend node dist/database/seeds/seed.js` (삭제 명령은 `load/README.md`).
+- 배포 서버(`APP_ENV=production`)에서는 시드가 거부된다. 성능 테스트 기간에만 일회용 컨테이너로 명시적으로 넣고 끝나면 지운다 [구현 결정]: `docker compose run --rm -e APP_ENV=development backend --seed` (삭제 명령은 `load/README.md`).
 
 ### 8.5 보존·삭제
 
@@ -498,7 +491,7 @@ CREATE TABLE recommendations (
 | 요청 | `POST /auth/refresh`, `POST /auth/logout`: 쿠키 `refresh_token`이 없으면 본문 `{ "refreshToken": "…" }`을 읽는다. 둘 다 있으면 **쿠키 우선**. 본문 `refreshToken`이 문자열이 아니면 422 E4002. 이 본문은 `X-Client` 헤더와 관계없이 받는다 |
 | 검증 | 본문으로 온 토큰도 쿠키와 **같은 경로**로 검증한다 — 교체·재사용 감지·해시 저장 규칙 그대로 (§9.4) |
 | 로그 | 본문 `refreshToken`도 로그 금지 (redact `*.refreshToken`, 본문은 애초에 기록하지 않음) |
-| 확장 | Android를 만들면 `X-Client: android`로 같은 방식을 쓴다. 허용 값은 코드 상수 한 곳(`auth/client-type.ts`)에만 두고, 추가할 때는 이 표를 먼저 고친다 |
+| 확장 | Android를 만들면 `X-Client: android`로 같은 방식을 쓴다. 허용 값은 코드 상수 한 곳(`auth/ClientType`)에만 두고, 추가할 때는 이 표를 먼저 고친다 |
 
 - 앱은 `refreshToken`을 Keychain에 저장하고 refresh·logout 때 본문으로 보낸다.
 - 백엔드는 쿠키를 우선하므로, URLSession이 오래된 쿠키를 자동으로 붙이면 그 쿠키가 쓰인다. 쿠키와 Keychain 값이 어긋나 이미 교체된 토큰이 오면 재사용 감지로 전체 로그아웃되므로, 앱은 auth 요청에서 쿠키 자동 처리를 끄는 것(`httpShouldHandleCookies = false`)을 권장한다 (앱 쪽 설정).
@@ -549,7 +542,7 @@ Set-Cookie: refresh_token=<token>; HttpOnly; Secure; SameSite=Strict; Path=/api/
 
 1. **로그인 제한 가드**: 클라이언트 IP(§15.2)당 1분 고정 창 `LOGIN_RATE_PER_MIN`(10)회. 성공·실패 관계없이 모든 시도를 센다. 초과 시 **429 E4004** (`reason: login_rate`, Retry-After). 인스턴스 메모리 카운터 [구현 결정].
 2. 이메일 정규화 → 사용자 조회.
-3. 사용자가 없어도 더미 해시와 `bcrypt.compare`를 실행해 응답 시간을 맞춘다 [구현 결정].
+3. 사용자가 없어도 더미 해시와 bcrypt 비교를 실행해 응답 시간을 맞춘다 [구현 결정].
 4. 불일치 또는 사용자 없음 → **401 E1003** (어느 쪽이 틀렸는지 구분하지 않음).
 5. 액세스·리프레시 토큰 발급, 리프레시 해시 INSERT, 쿠키 설정.
 
@@ -665,28 +658,28 @@ survey
 - 필드 이름 `image`·`survey`·`deviceType`, `survey`는 JSON **문자열**.
 - iOS 앱은 `deviceType`을 항상 `smartphone`으로 보낸다 [앱 협의]. 백엔드 검증은 그대로 세 값 모두 허용.
 
-`survey` 파싱: `JSON.parse` 실패 → E4002. 검증 실패 필드는 `survey.` 접두로 detail에 담는다. 저장·응답용으로 **정규화된 객체**(모든 키 포함, 미입력은 `null`, 배열은 `[]`)를 쓴다 [구현 결정].
+`survey` 파싱: JSON 파싱 실패 → E4002. 검증 실패 필드는 `survey.` 접두로 detail에 담는다. 저장·응답용으로 **정규화된 객체**(모든 키 포함, 미입력은 `null`, 배열은 `[]`)를 쓴다 [구현 결정].
 
 #### 처리 순서 (SC-03 §4.1 순서를 지킴)
 
-Nest 수명주기에서 **Guard는 Interceptor보다 먼저** 실행된다. 그래서 제한 검사를 Guard로 두면 multer가 파일을 버퍼링하기 전에 거절할 수 있다.
+Spring MVC에서 **인터셉터(`preHandle`)는 컨트롤러 인자를 만들기 전에** 실행된다. multipart를 지연 파싱(`resolve-lazily: true`)하므로 인증·제한 검사가 업로드 본문을 읽기 전에 거절할 수 있다. 같은 이유로 `@PostMapping`에 `consumes`를 두지 않는다 — 두면 Content-Type 불일치(415)가 인증(401)보다 먼저 판정된다 [구현 결정].
 
 | 순서 | 단계 | 구현 위치 | 실패 |
 |---|---|---|---|
-| 1 | 인증 | `JwtAuthGuard` | 401 E1001 |
-| 2 | 요청 제한: 진행 중 분석(queued·recommending) 또는 이 사용자의 처리 중 제출이 있음 / 오늘(KST) 생성한 분석 수 ≥ `ANALYSIS_DAILY_LIMIT` | `AnalysisLimitGuard` | 429 E4004 (`in_progress` / `daily_limit`) |
-| 3 | 대기열 상한: `SELECT COUNT(*) FROM analyses WHERE status='queued'` ≥ `REC_QUEUE_LIMIT` | `QueueCapacityGuard` | 503 E3003 |
-| 4 | AI 가용성: `aiAvailable=false` | `AiAvailabilityGuard` | 503 E3001 [구현 결정: 위치] |
-| 5 | 파일 수신: memoryStorage, `limits: { fileSize: 10*1024*1024, files: 1 }` | `FileInterceptor('image')` | 크기 초과 413 E2003 |
-| 6 | 형식 검증: image 없음 → E4002 / 파일 시그니처가 JPEG(`FF D8 FF`)·PNG(`89 50 4E 47`) 아님 → 415 E2004 / 짧은 변 < 720px → 422 E2002 "사진 해상도가 낮아요. 다시 찍어 주세요." [구현 결정] / deviceType·survey 검증 → E4002 | Pipe | |
+| 1 | 인증 | `AuthInterceptor` (순서 0) | 401 E1001 |
+| 2 | 요청 제한: 진행 중 분석(queued·recommending) 또는 이 사용자의 처리 중 제출이 있음 / 오늘(KST) 생성한 분석 수 ≥ `ANALYSIS_DAILY_LIMIT` | `AnalysisGuardInterceptor` (순서 1, `@AnalysisGuards`) | 429 E4004 (`in_progress` / `daily_limit`) |
+| 3 | 대기열 상한: `SELECT COUNT(*) FROM analyses WHERE status='queued'` ≥ `REC_QUEUE_LIMIT` | 〃 | 503 E3003 |
+| 4 | AI 가용성: `aiAvailable=false` | 〃 | 503 E3001 [구현 결정: 위치] |
+| 5 | 파일 수신: 메모리에서만, 파일 10MB·요청 12MB 한도 | Servlet multipart (컨트롤러 인자 해석 시) | 크기 초과 413 E2003 |
+| 6 | 형식 검증: image 없음 → E4002 / 파일 시그니처가 JPEG(`FF D8 FF`)·PNG(`89 50 4E 47`) 아님 → 415 E2004 / 짧은 변 < 720px → 422 E2002 "사진 해상도가 낮아요. 다시 찍어 주세요." [구현 결정] / deviceType·survey 검증 → E4002 | `Submission.validate` | |
 | 7 | AI 측정 `POST /infer/skin-metrics` (§12) | `AiClient.measureSkin` | §12.5 표 |
-| 8 | 이미지 버퍼 참조 해제 (`req.file = undefined`, 지역 변수 해제) | 서비스 `finally` | |
+| 8 | 이미지 버퍼 참조 해제 (`Submission.releaseImage()`) | 서비스 `finally` | |
 | 9 | AI 응답 검증(§12.4) → 4자리 반올림 → 점수 계산(§11) | | 500 E4001 |
 | 10 | 트랜잭션: `analyses`(status `queued`, `queued_at = now()`, `is_demo = is_stub`, `measure_ms`) + `skin_metrics`(ROI별) + `surveys` INSERT | | 500 E4001 |
 | 11 | 대기 순번·예상 대기 계산(§13.8) → **202** | | |
 
 - **측정이 실패하면 분석 행을 만들지 않는다.** (상태 없음)
-- 처리 중 제출 잠금 [구현 결정]: 2단계 Guard가 통과하면 인스턴스 메모리 `Set<userId>`에 넣고 `res.on('close')`에서 뺀다. 같은 사용자가 측정 3초 사이에 두 번 제출해도 두 번째는 E4004.
+- 처리 중 제출 잠금 [구현 결정]: 2단계를 통과하면 인스턴스 메모리 집합(`SubmissionLock`)에 사용자 id를 넣고 요청이 끝나면(`afterCompletion`, 3·4단계 실패 포함) 뺀다. 같은 사용자가 측정 3초 사이에 두 번 제출해도 두 번째는 E4004.
 - 3단계 대기열 상한은 검사와 INSERT 사이에 경합이 있어 상한을 1–2건 넘을 수 있다. 시연 규모(동시 10명 이하)에서 허용 [구현 결정].
 - 비운영 환경에서 `X-Fixture-Scenario` 헤더가 있으면 측정에 그 시나리오를 쓰고, 만든 분석 id와 함께 메모리에 기억해 워커의 추천 호출에도 쓴다(§12.7).
 
@@ -778,7 +771,7 @@ Nest 수명주기에서 **Guard는 Interceptor보다 먼저** 실행된다. 그�
 
 ### 10.3 POST /analyses/{id}/recommendation/retry — 인증 필요 (FR-ANA-04, S)
 
-- Guard: `JwtAuthGuard` → `AnalysisLimitGuard` → `QueueCapacityGuard` (SC-03: 대기열 상한·요청 제한을 4.1과 같이 적용). AI 가용성은 검사하지 않는다 — 큐에서 복구를 기다리면 된다 [구현 결정].
+- 검사: `AuthInterceptor` → `AnalysisGuardInterceptor`(`@AnalysisGuards(checkAiAvailability = false)`: 요청 제한 → 대기열 상한) (SC-03: 대기열 상한·요청 제한을 4.1과 같이 적용). AI 가용성은 검사하지 않는다 — 큐에서 복구를 기다리면 된다 [구현 결정].
 - 원자적 갱신:
 
 ```sql
@@ -839,7 +832,7 @@ RETURNING id;
 
 ---
 
-## 11. 점수 계산 (`analyses/scoring.ts`, SC-02 §4.5)
+## 11. 점수 계산 (`analyses/Scoring`, SC-02 §4.5)
 
 ### 11.1 명세의 식
 
@@ -1020,7 +1013,7 @@ Cloudflare HTML 503을 AI의 503 E3003으로 읽으면 "요청이 많아요"가 
 }
 ```
 
-응답 검증 (`ai-response.schemas.ts`)
+응답 검증 (`AiResponseParser`)
 
 | 검사 | 위반 시 |
 |---|---|
@@ -1072,7 +1065,7 @@ Cloudflare HTML 503을 AI의 503 E3003으로 읽으면 "요청이 많아요"가 
 | `rec-slow` | 정상 | **60초 지연** 후 정상 (대기열 테스트) | ok |
 | `ai-down` | `connection` 오류 | `connection` 오류 | 실패 → `aiAvailable=false` |
 
-- 시나리오는 `AI_FIXTURE_SCENARIO`. **`NODE_ENV !== 'production'`일 때만** 요청 헤더 `X-Fixture-Scenario`로 요청마다 바꿀 수 있다.
+- 시나리오는 `AI_FIXTURE_SCENARIO`. **`APP_ENV`가 production이 아닐 때만** 요청 헤더 `X-Fixture-Scenario`로 요청마다 바꿀 수 있다.
 - 워커는 요청 헤더를 볼 수 없다 → POST /analyses·retry에서 받은 헤더 시나리오를 `Map<analysisId, scenario>`(인스턴스 메모리)에 넣고 워커가 꺼내 쓴다. 없으면 env 값. 재시작하면 사라져도 된다 [구현 결정].
 - health는 env 시나리오만 따른다.
 - 지연은 타이머로 구현하되 테스트에서 가짜 타이머로 넘길 수 있게 한다.
@@ -1101,7 +1094,7 @@ Cloudflare HTML 503을 AI의 503 E3003으로 읽으면 "요청이 많아요"가 
 | 폴링 | 1초마다. 처리 중이면 건너뜀(동시성 1) |
 | 동시성 | 1. GPU 생성이 직렬이기 때문 |
 | AI 비가용 | `aiAvailable=false`면 획득 쿼리를 실행하지 않음(대기열 유지). 복구되면 이어서 |
-| 기동 | `onApplicationBootstrap`: ① 복구 쿼리 ② 첫 헬스체크 ③ 폴링 시작. `NODE_ENV=test`에선 자동 시작하지 않고 테스트가 `tick()`을 직접 호출 [구현 결정] |
+| 기동 | `ApplicationReadyEvent`(`BackgroundJobs`): ① 복구 쿼리 ② 첫 헬스체크 ③ 폴링 시작. `APP_ENV=test`에선 자동 시작하지 않고 테스트가 `tick()`을 직접 호출 [구현 결정] |
 | 종료 | `enableShutdownHooks`. SIGTERM이면 폴링만 멈추고 진행 중 작업은 기다리지 않음 — 재시작 복구가 다시 큐에 넣는다 [구현 결정] |
 
 ```
@@ -1233,12 +1226,12 @@ SELECT COUNT(*) FROM analyses WHERE status = 'queued';  -- ≥ REC_QUEUE_LIMIT �
 
 ### 15.2 클라이언트 IP
 
-nginx·터널 뒤라 모든 요청의 출발 IP가 같다. `TRUST_PROXY=true`면 Express `trust proxy`를 켜고, **`CF-Connecting-IP` 헤더 → 없으면 `req.ip`** 순으로 판별(`common/utils/client-ip.ts`). 백엔드는 터널·nginx로만 들어오므로 헤더 위조 경로가 없다. 로컬에선 헤더가 없어 `req.ip`.
+nginx·터널 뒤라 모든 요청의 출발 IP가 같다. **`CF-Connecting-IP` 헤더 → (`TRUST_PROXY=true`면) `X-Forwarded-For` 첫 값 → 연결 주소** 순으로 판별(`common/web/ClientIp`). 백엔드는 터널·nginx로만 들어오므로 헤더 위조 경로가 없다. 로컬에선 헤더가 없어 `req.ip`.
 
 ### 15.3 기타 [구현 결정]
 
 - CORS: `CORS_ORIGIN` 하나만, `credentials: true`. iOS 앱은 CORS와 무관하다.
-- `helmet` 기본 헤더 적용(선택).
+- 기본 보안 헤더(`X-Content-Type-Options: nosniff` 등)는 `SecurityHeadersFilter`가 붙인다.
 - Swagger는 운영에서도 열어 둔다(레포가 Public이라 숨길 정보 없음, 앱 타입 생성용). 팀이 원하면 production에서 끔.
 
 ---
@@ -1249,56 +1242,58 @@ nginx·터널 뒤라 모든 요청의 출발 IP가 같다. `TRUST_PROXY=true`면
 
 | 레벨 | 대상 | 도구 | 실행 |
 |---|---|---|---|
-| 단위 | `scoring.ts`, `ai-transform.ts`, `ai-error.mapper.ts`, 응답 presenter, 토큰 로직, 시간 유틸 | Jest | `npm run test`, CI |
-| 계약 | fixture JSON이 AI 응답 검증·변환을 통과하는지, 변환한 요청이 SC-03 §5.2 모양인지 | Jest + `test/fixtures/ai` | CI, AI 응답이 바뀔 때 |
-| API 통합 | 백엔드 + DB, 엔드포인트별 | Jest e2e + supertest + PostgreSQL 16 | `npm run test:e2e`, CI 서비스 컨테이너 |
+| 단위 | `Scoring`, `AiTransform`, `AiErrorMapper`, `AnalysisPresenter`, `SurveyParser`, `ImageInspector`, 토큰·쿠키·시간 유틸, env 검증, `HttpAiClient` 오류 분류(로컬 가짜 HTTP 서버) | JUnit + AssertJ (`*Test`) | `./gradlew test`, CI |
+| 계약 | fixture JSON이 AI 응답 검증·변환을 통과하는지, 변환한 요청이 SC-03 §5.2 모양인지 | JUnit + `src/main/resources/fixtures/ai` | CI, AI 응답이 바뀔 때 |
+| API 통합 | 백엔드 + DB, 엔드포인트별 (실제 HTTP로 Tomcat·필터·인터셉터 순서까지) | `@SpringBootTest` + PostgreSQL 16 (`*IT`, `@Tag("integration")`) | `./gradlew integrationTest`, CI 서비스 컨테이너 |
 | 성능 | 응답 시간, 동시 요청 | k6 (`load/`) | 스테이징, 11/10–11/20 |
-| 실제 AI 계약 [구현 결정] | 백엔드 요청을 실제 skincare-ai가 인식하는지(고민 8종·피부 타입 4종 라벨), 응답이 검증을 통과하는지 | Jest (`test/e2e/ai-contract.e2e-spec.ts`, `AI_CONTRACT_URL`이 있을 때만) | AI 서버가 바뀔 때, M3 전 |
-| 스모크 [구현 결정] | 실행 중인 서버의 전체 흐름(상태 → 로그인 → 제출 → 추천 완료 → 이력·추이 → refresh) | `npm run smoke` (`SMOKE_BASE_URL`) | 배포 직후, AI 연동 확인 |
+| 실제 AI 계약 [구현 결정] | 백엔드 요청을 실제 skincare-ai가 인식하는지(고민 8종·피부 타입 4종 라벨), 응답이 검증을 통과하는지 | `AiContractIT` (`@Tag("ai-contract")`, `AI_CONTRACT_URL`이 있을 때만) | `./gradlew aiContractTest`. AI 서버가 바뀔 때, M3 전 |
+| 스모크 [구현 결정] | 실행 중인 서버의 전체 흐름(상태 → 로그인 → 제출 → 추천 완료 → 이력·추이 → refresh) | `./gradlew smoke` (`SMOKE_BASE_URL`) | 배포 직후, AI 연동 확인 |
 
-e2e 기반 [구현 결정]:
+통합 테스트 기반 [구현 결정]:
 
-- `AI_MODE=fixture`, `NODE_ENV=test`. 전역 setup에서 마이그레이션 실행, 테스트마다 테이블 TRUNCATE(`users … CASCADE`).
-- 워커는 자동 시작하지 않고 `RecommendationWorker.tick()`을 직접 호출. 지연 시나리오는 Jest 가짜 타이머 또는 지연 주입으로 기다리지 않게.
-- 실패·지연은 `X-Fixture-Scenario` 헤더로 재현.
-- 테스트 이미지는 코드로 생성(예: 1080×1440 단색 JPEG/PNG, 600×600 PNG, GIF 헤더, 11MB 버퍼). 실제 얼굴 사진 금지.
-- 테스트 이름에 TC ID를 넣는다: `it('TC-ANA-06: 진행 중 분석이 있으면 429 E4004', …)`.
+- `AI_MODE=fixture`, `APP_ENV=test`, 실제 PostgreSQL. DB는 `DATABASE_URL`(CI) 또는 `.env`의 DB 이름 + `_test`(로컬)이고 이름에 test가 없으면 실행을 거부한다. 스키마는 Flyway가 만들고, 테스트마다 테이블 TRUNCATE(`users … CASCADE`).
+- 워커·헬스체크는 자동 시작하지 않고 `RecommendationWorker.tick()`을 직접 호출. 지연은 `Sleeper`를 `FakeSleeper`로 바꿔 기다리지 않는다(rec-slow는 `holdSlow()`로 붙잡아 처리 중 상태를 본다).
+- 실패·지연은 `X-Fixture-Scenario` 헤더로 재현. `ai-down`·`AI_MODE=real`처럼 설정이 다른 테스트는 `@TestPropertySource`로 따로 띄운다.
+- 테스트 이미지는 코드로 생성(`TestImages`: 1080×1440 PNG, 600×600 PNG, 헤더만 있는 JPEG, GIF·HEIC 헤더, 11MB JPEG). 실제 얼굴 사진 금지.
+- 로그 검사는 `OutputCaptureExtension`으로 콘솔 JSON을 캡처해서 한다.
+- 테스트 이름에 TC ID를 넣는다: `@DisplayName("TC-ANA-06: 진행 중 분석이 있으면 429 E4004 in_progress (Retry-After 30)")`.
 
 ### 16.2 백엔드가 자동화하는 테스트 케이스 (SC-08)
 
 | TC | 내용 | 방법 |
 |---|---|---|
-| TC-AUTH-01~03 | 가입 성공(동의 시각 4개) / 동의 누락 422 E4002 / 대소문자 다른 이메일 409 E1004 | e2e |
-| TC-AUTH-04 | 로그인 200, 액세스 토큰, httpOnly 쿠키(속성 전부 확인) | e2e |
-| TC-AUTH-05 | 만료 토큰 → 401 E1001, refresh 후 원 요청 성공 (앱 동작의 백엔드 쪽) | e2e (짧은 만료 토큰 서명) |
-| TC-AUTH-06 | 로그아웃 후 이전 리프레시로 refresh → 401 E1001 | e2e |
-| TC-AUTH-07 | 분석 3건 계정 탈퇴 → 6개 테이블 0건 | e2e |
-| (추가) | 교체된 리프레시 토큰 재사용 → 401 + 그 사용자 토큰 전부 폐기 | e2e |
-| (추가) | `X-Client: ios` 로그인·refresh → `data.refreshToken` 있음(헤더 없으면 없음), 쿠키 없이 본문 토큰으로 refresh·logout, 본문으로 교체된 토큰 재사용 → 401 + 전부 폐기, 쿠키·본문 둘 다 있으면 쿠키 우선 | e2e |
-| TC-ANA-01 | 202, queued, queuePosition ≥ 1, skin_metrics·surveys 저장 | e2e |
-| TC-ANA-02 | gender 누락 → 422 E4002, detail에 `survey.gender` | e2e |
-| TC-ANA-03 | `no-face` → 422 E2001, analyses 행 없음 | e2e |
-| TC-ANA-04 | queued → recommending → done, 완료 시 추천 필드 모두 | e2e + `tick()` |
-| TC-ANA-05 | `rec-timeout` → failed E3002(attempt_count 1, 재시도 없음), 측정 유지 → ok로 재요청 → done | e2e |
-| TC-ANA-06 | 진행 중 분석 있을 때 두 번째 제출 → 429 E4004 | e2e |
-| TC-ANA-07 | 11MB → 413 E2003, GIF → 415 E2004 | e2e |
-| TC-ANA-08 | recommending 상태에서 재시작(복구 함수 호출) → queued → done | e2e |
-| TC-ANA-09 | 데모 측정 → 추천 요청 `metrics: null` | e2e (FixtureAiClient가 받은 요청 기록) |
-| TC-ANA-10 | AI 401 → 클라이언트 503 E3001, ERROR 로그 | 단위(매퍼) + e2e(HttpAiClient를 로컬 가짜 서버로) |
-| TC-HIS-01~03 | 목록 20/5, 최신순 / trend delta·previous null / 삭제 후 목록·추이 제외 | e2e (시드 또는 팩토리) |
-| TC-SEC-04 | 같은 CF-Connecting-IP 11번째 429, 다른 IP 정상 | e2e |
-| TC-SYS-01 | `ai-down` → aiAvailable false, 제출 503 E3001, 로그인·이력 정상 | e2e |
-| TC-SEC-01 | A 토큰으로 B 분석 조회·삭제·재요청·추이 → 404 E4003 | e2e |
-| TC-SEC-02 | password_hash가 `$2b$12$`로 시작 | e2e |
-| TC-PRI-01 | 분석 처리 후 업로드 관련 파일이 디스크에 없음 | e2e (OS 임시 디렉터리 전후 비교) + 코드 검사(`diskStorage`/`dest` 없음) |
-| TC-PRI-02 | 전체 흐름의 로그 출력에 설문 note·토큰·비밀번호·이메일 원문 없음 | e2e (로거 출력 캡처 후 문자열 검색) |
-| TC-PERF-04 | `rec-slow`로 큐를 채운 뒤 15개 계정 제출 → 12번째부터 503 E3003 | e2e(로컬) 또는 k6. **첫 건이 recommending으로 넘어간 뒤** 나머지를 보내야 "처리 1 + 대기 10"이 성립(아니면 11번째부터 거절) |
+| TC-AUTH-01~03 | 가입 성공(동의 시각 4개) / 동의 누락 422 E4002 / 대소문자 다른 이메일 409 E1004 | 통합 |
+| TC-AUTH-04 | 로그인 200, 액세스 토큰, httpOnly 쿠키(속성 전부 확인) | 통합 |
+| TC-AUTH-05 | 만료 토큰 → 401 E1001, refresh 후 원 요청 성공 (앱 동작의 백엔드 쪽) | 통합 (만료된 토큰 서명) |
+| TC-AUTH-06 | 로그아웃 후 이전 리프레시로 refresh → 401 E1001 | 통합 |
+| TC-AUTH-07 | 분석 3건 계정 탈퇴 → 6개 테이블 0건 | 통합 |
+| (추가) | 교체된 리프레시 토큰 재사용 → 401 + 그 사용자 토큰 전부 폐기 | 통합 |
+| (추가) | `X-Client: ios` 로그인·refresh → `data.refreshToken` 있음(헤더 없으면 없음), 쿠키 없이 본문 토큰으로 refresh·logout, 본문으로 교체된 토큰 재사용 → 401 + 전부 폐기, 쿠키·본문 둘 다 있으면 쿠키 우선 | 통합 |
+| TC-ANA-01 | 202, queued, queuePosition ≥ 1, skin_metrics·surveys 저장 | 통합 |
+| TC-ANA-02 | gender 누락 → 422 E4002, detail에 `survey.gender` | 통합 |
+| TC-ANA-03 | `no-face` → 422 E2001, analyses 행 없음 | 통합 |
+| TC-ANA-04 | queued → recommending → done, 완료 시 추천 필드 모두 | 통합 + `tick()` |
+| TC-ANA-05 | `rec-timeout` → failed E3002(attempt_count 1, 재시도 없음), 측정 유지 → ok로 재요청 → done | 통합 |
+| TC-ANA-06 | 진행 중 분석 있을 때 두 번째 제출 → 429 E4004 | 통합 |
+| TC-ANA-07 | 11MB → 413 E2003, GIF → 415 E2004 | 통합 |
+| TC-ANA-08 | recommending 상태에서 재시작(복구 함수 호출) → queued → done | 통합 |
+| TC-ANA-09 | 데모 측정 → 추천 요청 `metrics: null` | 통합 (FixtureAiClient가 받은 요청 기록) |
+| TC-ANA-10 | AI 401 → 클라이언트 503 E3001, ERROR 로그 | 단위(매퍼·분류) + 통합(`AI_MODE=real`, 로컬 가짜 AI 서버) |
+| TC-HIS-01~03 | 목록 20/5, 최신순 / trend delta·previous null / 삭제 후 목록·추이 제외 | 통합 (시드 또는 팩토리) |
+| TC-SEC-04 | 같은 CF-Connecting-IP 11번째 429, 다른 IP 정상 | 통합 |
+| TC-SYS-01 | `ai-down` → aiAvailable false, 제출 503 E3001, 로그인·이력 정상 | 통합 |
+| TC-SEC-01 | A 토큰으로 B 분석 조회·삭제·재요청·추이 → 404 E4003 | 통합 |
+| TC-SEC-02 | password_hash가 `$2b$12$`로 시작 | 통합 |
+| TC-PRI-01 | 분석 처리 후 업로드 관련 파일이 디스크에 없음 | 통합 (임시 디렉터리·build에서 표식 검색) + 코드 검사(`transferTo`·임시 파일·파일 쓰기 API 없음, multipart 임계값 > 최대 크기) |
+| TC-PRI-02 | 전체 흐름의 로그 출력에 설문 note·토큰·비밀번호·이메일 원문 없음, 로그 줄이 빠지지 않음 | 통합 (콘솔 출력 캡처 후 문자열 검색) |
+| TC-PERF-04 | `rec-slow`로 큐를 채운 뒤 15개 계정 제출 → 12번째부터 503 E3003 | 통합(로컬) 또는 k6. **첫 건이 recommending으로 넘어간 뒤** 나머지를 보내야 "처리 1 + 대기 10"이 성립(아니면 11번째부터 거절) |
 
 스테이징에서 수동·k6로 하는 것: TC-PERF-01(제출 p50 ≤ 3초, p95 ≤ 5초), TC-PERF-02(recommend_ms p95 ≤ 90초), TC-PERF-03(10명 동시, 실패 0, 마지막 완료 약 10분 이내), TC-E2E-01~03(앱 담당).
 
 ### 16.3 CI (`.github/workflows/ci.yml`)
 
 ```yaml
+# TRD §16.3 — develop·main 대상 PR과 푸시에서 형식 검사·단위 테스트·빌드·통합 테스트
 name: ci
 on:
   pull_request: { branches: [develop, main] }
@@ -1310,26 +1305,23 @@ jobs:
       db:
         image: postgres:16-alpine
         env: { POSTGRES_USER: test, POSTGRES_PASSWORD: test, POSTGRES_DB: test }
-        ports: ["5432:5432"]
+        ports: ['5432:5432']
         options: --health-cmd pg_isready --health-interval 5s --health-retries 10
     env:
+      # 통합 테스트 DB (이름에 test가 있어야 돈다). 그 밖의 설정은 테스트 코드가 고정 값으로 넣는다
       DATABASE_URL: postgres://test:test@localhost:5432/test
-      AI_MODE: fixture
-      NODE_ENV: test
-      JWT_ACCESS_SECRET: ci-access-secret-not-real
-      JWT_REFRESH_SECRET: ci-refresh-secret-not-real
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: npm }
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run test
-      - run: npm run build
-      - run: npm run test:e2e
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew spotlessCheck
+      - run: ./gradlew test
+      - run: ./gradlew bootJar
+      - run: ./gradlew integrationTest
 ```
 
-(팀 문서 예시에 env 검증 통과용 가짜 JWT 값과 `NODE_ENV`만 더했다.)
+통합 테스트의 앱 설정(가짜 JWT 비밀키 등)은 테스트 코드가 고정 값으로 넣으므로 CI에는 `DATABASE_URL`만 준다.
 
 ---
 
@@ -1337,17 +1329,17 @@ jobs:
 
 ### 17.1 Dockerfile [구현 결정]
 
-- 멀티 스테이지 `node:20-alpine`: build 스테이지(`npm ci` → `npm run build` → `npm prune --omit=dev`), run 스테이지(build의 운영 `node_modules`·`dist/`·`test/fixtures/ai`만 복사, 비root 사용자). 네이티브 모듈을 build에서 컴파일해 넘기므로 run 스테이지에 빌드 도구가 없다. fixture JSON은 배포 서버에서 `AI_MODE=fixture`로 띄울 때만 쓴다.
-- `bcrypt` 네이티브 빌드가 alpine에서 실패하면 build 스테이지에 `python3 make g++`를 추가.
-- 시작 스크립트: 컴파일된 마이그레이션 실행 → `node dist/main.js`.
-- `HEALTHCHECK`: `GET /api/v1/system/status`.
+- 멀티 스테이지: build `eclipse-temurin:21-jdk-alpine`(Gradle wrapper로 `bootJar`, 의존성 층 캐시) → run `eclipse-temurin:21-jre-alpine`(jar만 복사, 비root 사용자, `APP_ENV=production` 기본). AI fixture JSON은 jar 안(`fixtures/ai`)에 들어 있고 배포 서버에서 `AI_MODE=fixture`로 띄울 때만 쓴다.
+- 시작: `java -XX:MaxRAMPercentage=75 -jar app.jar`. 마이그레이션은 앱 기동 시 Flyway가 먼저 적용한다(실패하면 기동하지 않음 → compose가 재시작).
+- `HEALTHCHECK`: `GET /api/v1/system/status` (DB까지 확인).
+- 시드: `docker compose run --rm -e APP_ENV=development backend --seed` (§8.4).
 
 ### 17.2 docker-compose.yml (이 레포에 둠)
 
 ```
 docker-compose.yml
 ├─ web          nginx:1.27-alpine (/api 프록시, 업로드 12MB 제한 — 앱만 쓰므로 정적 파일 서빙 없음)
-├─ backend      node:20-alpine (NestJS, 포트 3000 — 외부 비공개)
+├─ backend      eclipse-temurin:21-jre-alpine (Spring Boot, 포트 3000 — 외부 비공개)
 ├─ db           postgres:16-alpine (볼륨 pgdata, 외부 비공개)
 └─ cloudflared  (app.<도메인> → web:80)
 ```
@@ -1360,11 +1352,13 @@ docker-compose.yml
 
 > 10/10 로컬에서 compose(`web`·`backend`·`db`, cloudflared 제외)로 확인: 컨테이너 시작 시 마이그레이션, 헬스체크 healthy, nginx 경유 `/api` 200·그 밖 404, `CF-Connecting-IP`가 백엔드까지 전달돼 로그인 제한이 IP별로 동작, 12MB 초과 업로드는 nginx가 413 E2003 봉투로 응답, production 쿠키 `Secure`.
 
-> 10/12 전체 실행 확인: 위 구성 + skincare-ai(mock 추천·stub 측정)를 같은 compose 네트워크에 붙이고 `AI_MODE=real`로 연결. nginx 경유 `npm run smoke` 32개 항목(13개 엔드포인트, 오류 경로, 토큰 교체·재사용 감지, 탈퇴 정리) 통과, 추천 실패 → 재요청 → done, AI 중지 21초 만에 비가용·제출 503 E3001·로그인/이력 정상·재시작 29초 만에 복구, k6 PERF-03(10명 동시) 실패 0. iOS 앱(skincare-frontend `chore/ios-project-setup`)은 Xcode가 없어 실행하지 못했고 네트워크·모델 코드를 계약과 대조했다 (`SystemStatus.checkedAt` Optional 필요 외 일치).
+> 10/12 전체 실행 확인 (NestJS 버전): 위 구성 + skincare-ai(mock 추천·stub 측정)를 같은 compose 네트워크에 붙이고 `AI_MODE=real`로 연결. nginx 경유 스모크 32개 항목(13개 엔드포인트, 오류 경로, 토큰 교체·재사용 감지, 탈퇴 정리) 통과, 추천 실패 → 재요청 → done, AI 중지 21초 만에 비가용·제출 503 E3001·로그인/이력 정상·재시작 29초 만에 복구, k6 PERF-03(10명 동시) 실패 0. iOS 앱(skincare-frontend `chore/ios-project-setup`)은 Xcode가 없어 실행하지 못했고 네트워크·모델 코드를 계약과 대조했다 (`SystemStatus.checkedAt` Optional 필요 외 일치).
+
+> 10/13 Spring Boot 버전으로 같은 구성 재확인: Docker 이미지 빌드·헬스체크 healthy·기동 시 Flyway, nginx 경유 `./gradlew smoke` 32개 항목 통과(실제 AI HTTP 클라이언트 → skincare-ai mock), 시드 절차(production 거부, `-e APP_ENV=development`로 실행), k6 PERF-03(10명 동시) 체크 30/30·실패 0·마지막 완료 12.2초, 컨테이너 로그에 토큰·설문 원문 없음.
 
 ### 17.3 로컬에서 iOS 앱과 연동 [구현 결정]
 
-- 백엔드는 `app.listen(PORT, '0.0.0.0')`으로 띄운다.
+- 백엔드(Tomcat)는 기본으로 모든 인터페이스(`0.0.0.0`)에서 받는다 — 실기기에서 Mac의 LAN IP로 붙을 수 있다.
 - iOS 시뮬레이터: `http://localhost:3000/api/v1`.
 - 실기기: 같은 Wi-Fi에서 Mac의 LAN IP(`http://192.168.x.x:3000/api/v1`). 평문 HTTP라 앱 Info.plist에 ATS 예외가 필요하다(앱 쪽 설정). 또는 임시 터널(`cloudflared tunnel --url http://localhost:3000`)의 HTTPS 주소를 쓴다.
 - 로컬 HTTP로 붙을 때는 `Secure` 쿠키가 전달되지 않으므로 `COOKIE_SECURE=false` (터널 HTTPS면 true 그대로). iOS 앱은 본문 `refreshToken`(§9.1)을 쓰므로 이 설정과 관계없이 refresh가 동작한다.
@@ -1375,7 +1369,7 @@ docker-compose.yml
 1. 김우주: AI 서버 기동(`$env:REC_BACKEND="sllm"; .\scripts\run_server.ps1`) + 터널(`cloudflared tunnel run skincare-ai`)
 2. 백엔드 `.env`: `AI_MODE=real`, `AI_BASE_URL`, `AI_INTERNAL_TOKEN` 설정 후 재시작
 3. `GET /api/v1/system/status`가 `aiAvailable: true`인지 확인
-4. `SMOKE_BASE_URL=https://app.<도메인>/api/v1 npm run smoke`로 API 전체 확인 [구현 결정] — 임시 계정을 가입시켜 13개 엔드포인트·주요 오류 경로를 돌고 탈퇴까지 한다 (회귀 모델 연결 후에는 `SMOKE_IMAGE`로 본인 동의 얼굴 사진)
+4. `SMOKE_BASE_URL=https://app.<도메인>/api/v1 ./gradlew smoke`로 API 전체 확인 [구현 결정] — 임시 계정을 가입시켜 13개 엔드포인트·주요 오류 경로를 돌고 탈퇴까지 한다 (회귀 모델 연결 후에는 `SMOKE_IMAGE`로 본인 동의 얼굴 사진)
 
 로컬에서 미리 확인하려면 skincare-ai를 mock 모드(`REC_BACKEND=mock`, GPU 불필요)로 띄우고 `AI_MODE=real`로 붙인다. 10/10 이 방식으로 측정·추천·토큰 오류·AI 중지/복구를 확인했다.
 
@@ -1390,27 +1384,29 @@ docker-compose.yml
 오늘(10/10) 기준 M2(10/12)까지 Phase 0–3의 M 항목을 fixture 모드로 끝내는 것이 목표다. 완료한 항목은 체크한다.
 
 > 10/10 진행: Phase 0–7 구현·테스트 완료 (단위 + e2e, fixture 모드). 로컬에서 실제 skincare-ai(mock 추천·stub 측정)와 `AI_MODE=real` 연동도 확인했다. 남은 것: 배포 서버 + 실제 sLLM 연동(M3), 스테이징 부하 테스트 실측(11/10–11/20).
+>
+> 10/13: 같은 API·DDL로 Spring Boot 전환(Phase 8). Phase 0–7의 체크는 기능 기준이며 Spring Boot 버전에서 다시 확인했다. NestJS 구현은 `archive/nestjs` 브랜치.
 
 **Phase 0 — 골격 (WBS 4.1·4.2)**
-- [x] NestJS 10 프로젝트, ESLint·Prettier(printWidth 100, singleQuote), TS strict
+- [x] 프로젝트 골격, 형식 검사 (NestJS 10 → 10/13 Spring Boot 4.1 · Java 21 · Spotless)
 - [x] `config/` env 스키마·검증(§6), `.env.example`
-- [x] `common/`: 에러 코드 표·`ApiException`·전역 필터, 응답 봉투 인터셉터, X-Request-Id 미들웨어, pino 로깅·redact, 시간 유틸, 열거형(부록 A)
-- [x] `main.ts`: prefix `api/v1`, cookie-parser, CORS, trust proxy, ValidationPipe(422 E4002), Swagger `/api/docs`, `0.0.0.0`에서 listen
-- [x] TypeORM DataSource, §8.1 마이그레이션, 엔티티(NUMERIC·BIGINT transformer)
-- [x] `docker-compose.yml`(db), npm 스크립트(start:dev, test, test:e2e, migration:*, seed)
-- [x] CI(§16.3), e2e 기반(§16.1)
-- 완료 기준: `npm run start:dev` → `/api/docs` 열림, 마이그레이션 적용, CI 통과
+- [x] `common/`: 에러 코드 표·`ApiException`·전역 예외 처리, 응답 봉투, X-Request-Id, JSON 로깅, 시간 유틸, 열거형(부록 A)
+- [x] prefix `api/v1`, CORS, 프록시 뒤 IP, 422 E4002 검증, Swagger `/api/docs`, 모든 인터페이스에서 listen
+- [x] DB 연결, §8.1 마이그레이션 (TypeORM → 10/13 Flyway `V1`)
+- [x] `docker-compose.yml`(db), 실행·테스트·시드 명령 (README)
+- [x] CI(§16.3), 통합 테스트 기반(§16.1)
+- 완료 기준: 로컬 실행 → `/api/docs` 열림, 마이그레이션 적용, CI 통과
 
 **Phase 1 — 인증 (WBS 4.3, M)**
-- [x] signup, login(로그인 제한 포함), refresh(교체·재사용 감지), logout, JwtStrategy, GET /users/me
+- [x] signup, login(로그인 제한 포함), refresh(교체·재사용 감지), logout, 액세스 토큰 인증, GET /users/me
 - [x] 시드(test01~40, test01 완료 분석 25건)
 - 완료 기준: TC-AUTH-01~06, TC-SEC-02·04
 
 **Phase 2 — 분석 생성·조회 (WBS 4.4, M)**
-- [x] `scoring.ts` + §11.3 단위 테스트
-- [x] AiClient 인터페이스, FixtureAiClient(시나리오 5종, 헤더 오버라이드), `test/fixtures/ai/*.json`
+- [x] `Scoring` + §11.3 단위 테스트
+- [x] AiClient 인터페이스, FixtureAiClient(시나리오 5종, 헤더 오버라이드), `fixtures/ai/*.json`
 - [x] AI 응답 검증·변환·오류 매퍼(§12.4·12.5) + 단위 테스트
-- [x] POST /analyses(가드 순서, multer memoryStorage, 시그니처·크기·짧은 변, survey 파이프, 트랜잭션 저장)
+- [x] POST /analyses(검사 순서, 메모리 업로드, 시그니처·크기·짧은 변, survey 검증, 트랜잭션 저장)
 - [x] GET /analyses/{id} presenter
 - [x] HttpAiClient(타임아웃·재시도·오류 분류 §12.2)
 - 완료 기준: TC-ANA-01·02·03·06·07·09·10, TC-SEC-01, TC-PRI-01·02
@@ -1437,13 +1433,21 @@ docker-compose.yml
 
 **Phase 7 — 부하 테스트 (WBS 4.8, 11/10–11/20)**
 - [x] k6 스크립트(`load/`): TC-PERF-01~04, 계정별 토큰 미리 발급(로그인 제한 회피), 스테이징 `ANALYSIS_DAILY_LIMIT=100` — 로컬 fixture로 동작 확인 (10/10)
-- [x] 응답 시간 분포 집계 쿼리(measure_ms, queue_wait_ms, recommend_ms) — `npm run report:latency`, 배포 서버는 `node dist/database/scripts/latency-report.js`
+- [x] 응답 시간 분포 집계 쿼리(measure_ms, queue_wait_ms, recommend_ms) — `load/latency-report.sql`(요약·판정)·`latency-rows.sql`(CSV), db 컨테이너의 psql로 실행
 - [ ] 스테이징 실측 (11/10–11/20, 실제 AI 서버) — 실행 방법은 `load/README.md`
+
+**Phase 8 — Spring Boot 전환 (10/13) [구현 결정, 팀 합의 필요]**
+- [x] 같은 API 계약·DDL로 전체 재구현 (Java 21, Spring Boot 4.1, JdbcClient, Flyway), NestJS 구현은 `archive/nestjs` 브랜치에 보관
+- [x] 단위 테스트 146개, 통합 테스트(PostgreSQL) 87개로 TC 이전 — §16.2 전부
+- [x] OpenAPI 3.0 출력 유지(앱 타입 생성), multipart 본문 스키마·nullable 참조 정리, Redocly 린트 통과
+- [x] Dockerfile(JDK 빌드 → JRE 실행), CI(Gradle), 스모크(`./gradlew smoke`)·합성 이미지(`./gradlew loadImage`)·지연 집계(SQL)
+- [x] 로컬 전체 구성(nginx → backend → db + skincare-ai mock)에서 스모크 32개·k6 PERF-03 재확인 (§17.2)
+- [ ] 팀 문서(SC-02·SC-06·SC-07·개발운영계획서)의 NestJS 표기 수정 — 팀 합의 후 `skincare-ai`에 PR
 
 ### 18.2 완료 기준 (Definition of Done, SC-06 §4.3)
 
 - [ ] 요구사항 ID의 수용 기준을 만족한다
-- [ ] 단위 테스트가 있고 CI(lint·test·build·test:e2e)가 통과한다
+- [ ] 단위 테스트가 있고 CI(spotlessCheck·test·bootJar·integrationTest)가 통과한다
 - [ ] API·DB·화면이 바뀌었다면 해당 문서도 같은 PR에서 고쳤다
 - [ ] 로그에 이미지·설문 원문·토큰이 남지 않는다
 - [ ] 사용자 문구가 문구 규칙을 지킨다
@@ -1458,7 +1462,7 @@ docker-compose.yml
 
 ---
 
-## 부록 A. 열거형 (SC-03 §6) — `src/common/enums/`의 단일 출처
+## 부록 A. 열거형 (SC-03 §6) — `common/enums/`의 단일 출처
 
 ### A.1 상태
 
