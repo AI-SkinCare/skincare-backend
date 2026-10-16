@@ -1,12 +1,12 @@
 # 부하·성능 테스트 (k6)
 
-SC-08 §5 성능 테스트와 TRD §18.1 Phase 7을 위한 스크립트입니다. 일정은 11/10–11/20(WBS 4.8)이고, 스테이징은 정도희 서버 배포본 + 김우주 PC AI 서버(`REC_BACKEND=sllm`)입니다.
+SC-08 §5 성능 테스트와 TRD §18.1 Phase 7을 위한 스크립트입니다. 목표는 개정 수행계획서(2026-10-15) 2.1을 따릅니다. 일정은 기본 기능 시험 기간(11/10–11/24)이고, 스테이징은 배포 서버 + 김우주 PC AI 서버(DenseNet 분류 + Qwen2.5 `rec_sllm_v2`, `run_disease_pipeline.ps1`)입니다.
 
 | 스크립트 | 테스트 | 합격 기준 | 계정 |
 |---|---|---|---|
-| `perf-01-submit-latency.js` | TC-PERF-01: 1명이 20회 제출 (직전 분석이 끝난 뒤 다음 제출) | 제출 응답 p50 ≤ 3초, p95 ≤ 5초 (`submit_duration`) | test02 |
-| `latency-report.sql` | TC-PERF-02: 위 20건의 `recommend_ms` | p95 ≤ 90초 (스크립트가 판정 출력) | — |
-| `perf-03-concurrent.js` | TC-PERF-03: 10명이 동시에 1건씩 | 실패 0, 10건 모두 done, 마지막 완료 약 10분 이내, 대기 순번이 늘지 않음 | test11–test20 |
+| `perf-01-submit-latency.js` | TC-PERF-01: 1명이 20회 제출 (직전 분석이 끝난 뒤 다음 제출) | 제출 응답(이미지 분류 포함) p95 ≤ 3초 (`submit_duration`) | test02 |
+| `latency-report.sql` | TC-PERF-01·02: 위 20건의 `classify_ms`·`recommend_ms` | 분류 p95 ≤ 3초, 추천(큐 대기 제외, COMPLETED만) p95 ≤ 120초 (스크립트가 판정 출력) | — |
+| `perf-03-concurrent.js` | TC-PERF-03: 10명이 동시에 1건씩 | 누락 0(10건 모두 COMPLETED·WITHHELD), 마지막 완료 약 10분 이내, 대기 순번이 늘지 않음 | test11–test20 |
 | `perf-04-queue-limit.js` | TC-PERF-04: rec-slow로 처리 1 + 대기 10 → 15명 제출 | 12번째부터 503 E3003 | test21–test35 |
 
 ## 준비
@@ -21,8 +21,8 @@ SC-08 §5 성능 테스트와 TRD §18.1 Phase 7을 위한 스크립트입니다
    ```
 2. **일일 한도**: 스테이징 성능 테스트 동안 `ANALYSIS_DAILY_LIMIT=100` (기본 20이면 PERF-01이 막힘).
 3. **이미지**
-   - stub 측정(`is_stub: true`)이면 합성 이미지로 충분하다: `./gradlew loadImage` → `load/.tmp/face.png`
-   - 회귀 모델이 연결된 서버는 얼굴이 있어야 한다. **본인이 동의한 얼굴 사진**을 `-e IMAGE=/절대/경로/face.jpg`로 준다 (레포에 커밋 금지, `.gitignore`가 `*.jpg`·`*.png`를 막음).
+   - 흐름·시간만 재려면 합성 이미지로 충분하다: `./gradlew loadImage` → `load/.tmp/face.png`. 분류기는 얼굴이 아니어도 분류하므로 결과(라벨·보류 여부)는 의미가 없다. 합성 이미지가 보류(WITHHELD)로 끝나면 GPU 생성이 없어 TC-PERF-02 데이터가 쌓이지 않는다.
+   - 실제 조건으로 재려면 **본인이 동의한 얼굴 사진**을 `-e IMAGE=/절대/경로/face.jpg`로 준다 (레포에 커밋 금지, `.gitignore`가 `*.jpg`·`*.png`를 막음).
 4. **로그인 제한**: IP당 분당 10회라서 스크립트는 시작 단계(setup)에서 계정별 토큰을 미리 받고 9건마다 61초 쉰다. 스테이징은 Cloudflare가 `CF-Connecting-IP`를 덮어쓰므로 헤더로 우회하지 않는다. 액세스 토큰이 1시간이라 PERF-01(약 20분)까지는 문제없다.
 
 ## 실행
@@ -38,7 +38,7 @@ k6() {
     -e BASE_URL="${BASE_URL:-http://host.docker.internal:3000/api/v1}" -e SEED_PASSWORD="$SEED_PASSWORD" "$@"
 }
 
-BASE_URL=https://app.<도메인>/api/v1 k6 perf-01-submit-latency.js      # 약 20분 (추천 1건 ≈ 55초)
+BASE_URL=https://app.<도메인>/api/v1 k6 perf-01-submit-latency.js      # 약 15–20분 (추천 1건 ≈ 45초)
 BASE_URL=https://app.<도메인>/api/v1 k6 perf-03-concurrent.js          # 약 10분
 k6 perf-04-queue-limit.js                                               # 로컬, AI_MODE=fixture 서버
 ```
@@ -52,7 +52,7 @@ k6 perf-04-queue-limit.js                                               # 로컬
 로컬과 배포 서버 모두 db 컨테이너의 psql로 실행한다 (DB가 외부에 열려 있지 않아도 된다). `until`은 생략하면 지금까지.
 
 ```bash
-# 요약: p50/p95/p99, 상태·에러 코드별 건수, TC-PERF-02 판정
+# 요약: p50/p95/p99, 상태·추천 상태·에러 코드별 건수, TC-PERF-01·02 판정
 docker compose exec -T db psql -U skincare -d skincare \
   -v since=2026-11-10T00:00:00Z -v until=2026-11-21T00:00:00Z -f - < load/latency-report.sql
 
@@ -61,7 +61,7 @@ docker compose exec -T db psql -U skincare -d skincare --csv \
   -v since=2026-11-10T00:00:00Z -f - < load/latency-rows.sql > latency.csv
 ```
 
-`measure_ms`(측정 왕복), `queue_wait_ms`(대기), `recommend_ms`(추천 왕복)를 집계한다.
+`classify_ms`(분류 왕복), `queue_wait_ms`(대기), `recommend_ms`(추천 왕복 — COMPLETED만, 보류는 GPU 생성이 없어 뺀다)를 집계한다.
 
 ## 로컬에서 실행해 본 결과 (2026-10-10, AI_MODE=fixture)
 
@@ -71,7 +71,7 @@ docker compose exec -T db psql -U skincare -d skincare --csv \
 | perf-03 | 10건 모두 done, 대기 순번 단조 감소, 체크 30/30 |
 | perf-04 | 2–11번째 202, 12–15번째 503 E3003 |
 
-fixture는 측정이 즉시, 추천이 1초라서 실제 수치는 스테이징에서 다시 잰다.
+fixture는 분류가 즉시, 추천이 1초라서 실제 수치는 스테이징에서 다시 잰다. 위 결과와 아래 기록은 개정 전(회귀 측정) 파이프라인 기준이다.
 
 10/12 로컬 전체 구성(nginx → backend → db + skincare-ai mock)에서 위 "배포 서버 시드" 절차와 perf-03을 실행: 10건 모두 done, `http_req_failed` 0%, `time_to_done` 최대 12.6초.
 

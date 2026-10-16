@@ -21,7 +21,7 @@ public class AiClientConfig {
       var ai = props.ai();
       return new HttpAiClient(
           new HttpAiClient.Options(
-              ai.baseUrl(), ai.internalToken(), ai.skinTimeoutMs(), ai.recTimeoutMs()),
+              ai.baseUrl(), ai.internalToken(), ai.classifyTimeoutMs(), ai.recTimeoutMs()),
           json);
     }
     return new FixtureAiClient(props.defaultScenario(), sleeper, json);

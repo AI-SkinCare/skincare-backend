@@ -9,8 +9,8 @@
 \else
   \set until 'infinity'
 \endif
-SELECT id, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at, status, is_demo,
-       measure_ms, queue_wait_ms, recommend_ms, attempt_count, error_code
+SELECT id, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at, status,
+       recommendation_status, classify_ms, queue_wait_ms, recommend_ms, attempt_count, error_code
 FROM analyses
 WHERE created_at >= :'since'::timestamptz AND created_at < :'until'::timestamptz
 ORDER BY created_at;

@@ -4,9 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 import com.aiskincare.backend.aiclient.AiModels.AiCallContext;
-import com.aiskincare.backend.aiclient.AiModels.MeasureSkinInput;
-import com.aiskincare.backend.aiclient.AiModels.RecommendRequest;
-import com.aiskincare.backend.common.enums.DeviceType;
+import com.aiskincare.backend.aiclient.AiModels.ClassifyInput;
+import com.aiskincare.backend.aiclient.AiModels.DiseaseRecommendRequest;
 import com.aiskincare.backend.common.error.ErrorCode;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpServer;
@@ -44,8 +43,10 @@ class HttpAiClientTest {
   private final List<HttpServer> servers = new CopyOnWriteArrayList<>();
   private final List<Seen> seen = new CopyOnWriteArrayList<>();
   private static final JsonMapper JSON = JsonMapper.builder().build();
-  private static final RecommendRequest REQUEST =
-      new RecommendRequest(null, Map.of("gender", "female", "ageBand", "20s"));
+  private static final DiseaseRecommendRequest REQUEST =
+      new DiseaseRecommendRequest(
+          Map.of("label", "아토피", "label_en", "atopic"),
+          Map.of("gender", "female", "ageBand", "20s"));
   private static final AiCallContext CTX = new AiCallContext("req-123", null);
 
   @AfterEach
@@ -159,14 +160,14 @@ class HttpAiClientTest {
   @Test
   @DisplayName("2xx인데 스키마 위반 → invalid_response")
   void schemaViolation() throws IOException {
-    String url = start((path, body) -> Reply.json(200, "{\"skin_type\":1}"));
+    String url = start((path, body) -> Reply.json(200, "{\"recommendation_status\":1}"));
     assertThat(caught(() -> client(url).recommend(REQUEST, CTX)).kind())
         .isEqualTo(AiError.Kind.INVALID_RESPONSE);
   }
 
   @Test
   @DisplayName(
-      "X-Internal-Token·X-Request-Id를 보낸다. /health에는 내부 토큰을 보내지 않는다. 추천 본문은 snake 아님·metrics null")
+      "X-Internal-Token·X-Request-Id를 보낸다. /health에는 내부 토큰을 보내지 않는다. 추천은 /infer/disease-recommend에 disease·survey만 (metrics 없음)")
   void headers() throws IOException {
     String url =
         start(
@@ -174,36 +175,48 @@ class HttpAiClientTest {
                 path.equals("/health")
                     ? Reply.json(
                         200,
-                        "{\"status\":\"ok\",\"rec_loaded\":true,\"skin_loaded\":true,\"rec_backend\":\"sllm\",\"skin_backend\":\"stub\"}")
+                        "{\"status\":\"ok\",\"rec_loaded\":true,\"skin_loaded\":true,\"rec_backend\":\"sllm\",\"skin_backend\":\"stub\",\"disease_loaded\":true,\"disease_backend\":\"densenet\"}")
                     : Reply.json(401, aiError("E1001")));
-    assertThat(client(url).health().skinBackend()).isEqualTo("stub");
+    assertThat(client(url).health().diseaseLoaded()).isTrue();
     caught(() -> client(url).recommend(REQUEST, CTX));
     assertThat(seen.get(0).headers().getFirst("X-Internal-Token")).isNull();
+    assertThat(seen.get(1).path()).isEqualTo("/infer/disease-recommend");
     assertThat(seen.get(1).headers().getFirst("X-Internal-Token")).isEqualTo("internal-test-token");
     assertThat(seen.get(1).headers().getFirst("X-Request-Id")).isEqualTo("req-123");
-    var sent = JSON.readTree(seen.get(1).body());
-    assertThat(sent.has("metrics")).isTrue();
-    assertThat(sent.get("metrics").isNull()).isTrue();
+    var sent =
+        JSON.readTree(
+            new String(
+                seen.get(1).body().getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8));
+    assertThat(sent.has("metrics")).isFalse();
+    assertThat(sent.get("disease").get("label_en").asString()).isEqualTo("atopic");
+    assertThat(sent.get("disease").get("label").asString()).isEqualTo("아토피");
     assertThat(sent.get("survey").get("gender").asString()).isEqualTo("female");
   }
 
   @Test
-  @DisplayName("측정 요청은 multipart image(시그니처 Content-Type)·device_type")
-  void measureMultipart() throws IOException {
-    String url = start((path, body) -> Reply.json(422, aiError("E2001")));
-    var input =
-        new MeasureSkinInput(
-            new byte[] {(byte) 0x89, 0x50, 0x4E, 0x47}, "image/png", DeviceType.SMARTPHONE);
-    AiError error = caught(() -> client(url).measureSkin(input, CTX));
+  @DisplayName("분류 요청은 /infer/disease에 multipart image 하나(시그니처 Content-Type), device_type 없음")
+  void classifyMultipart() throws IOException {
+    String url = start((path, body) -> Reply.json(422, aiError("E2002")));
+    var input = new ClassifyInput(new byte[] {(byte) 0x89, 0x50, 0x4E, 0x47}, "image/png");
+    AiError error = caught(() -> client(url).classify(input, CTX));
     assertThat(error.kind()).isEqualTo(AiError.Kind.HTTP);
     assertThat(error.status()).isEqualTo(422);
-    assertThat(error.code()).isEqualTo("E2001");
+    assertThat(error.code()).isEqualTo("E2002");
     String body = seen.get(0).body();
-    assertThat(seen.get(0).path()).isEqualTo("/infer/skin-metrics");
+    assertThat(seen.get(0).path()).isEqualTo("/infer/disease");
     assertThat(body).contains("name=\"image\"; filename=\"image.png\"");
     assertThat(body).contains("Content-Type: image/png");
-    assertThat(body).contains("name=\"device_type\"");
-    assertThat(body).contains("smartphone");
+    assertThat(body).doesNotContain("device_type");
+  }
+
+  @Test
+  @DisplayName("분류기 비활성(503 E3001)은 http로 읽는다 — Cloudflare HTML 503과 구분")
+  void classifierDisabled() throws IOException {
+    String url = start((path, body) -> Reply.json(503, aiError("E3001")));
+    AiError error =
+        caught(() -> client(url).classify(new ClassifyInput(new byte[4], "image/png"), CTX));
+    assertThat(error.kind()).isEqualTo(AiError.Kind.HTTP);
+    assertThat(AiErrorMapper.classify(error).code()).isEqualTo(ErrorCode.E3001);
   }
 
   @Test

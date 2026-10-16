@@ -1,6 +1,8 @@
 package com.aiskincare.backend.recommendation;
 
+import com.aiskincare.backend.aiclient.AiModels.DiseaseRecommendResult;
 import com.aiskincare.backend.aiclient.AiModels.RecommendResult;
+import com.aiskincare.backend.common.enums.AnalysisStatus;
 import com.aiskincare.backend.common.enums.Concern;
 import com.aiskincare.backend.common.error.ErrorCode;
 import com.aiskincare.backend.config.Constants;
@@ -27,14 +29,14 @@ public class RecommendationQueueRepository {
     this.json = json;
   }
 
-  /** 가장 오래된 queued 1건을 recommending으로 바꾸고 id를 돌려준다 */
+  /** 가장 오래된 QUEUED 1건을 GENERATING으로 바꾸고 id를 돌려준다 */
   public Optional<String> acquire() {
     return jdbc.sql(
             """
-            UPDATE analyses SET status = 'recommending', rec_started_at = now(),
+            UPDATE analyses SET status = 'GENERATING', rec_started_at = now(),
                    queue_wait_ms = (EXTRACT(EPOCH FROM now() - queued_at) * 1000)::int,
                    attempt_count = attempt_count + 1
-            WHERE id = (SELECT id FROM analyses WHERE status = 'queued'
+            WHERE id = (SELECT id FROM analyses WHERE status = 'QUEUED'
                         ORDER BY queued_at LIMIT 1 FOR UPDATE SKIP LOCKED)
             RETURNING id
             """)
@@ -47,27 +49,39 @@ public class RecommendationQueueRepository {
     jdbc.sql(
             """
             UPDATE analyses SET attempt_count = attempt_count + 1
-            WHERE id = :id AND status = 'recommending'
+            WHERE id = :id AND status = 'GENERATING'
             """)
         .param("id", analysisId)
         .update();
   }
 
-  /** 추천 결과 저장. 분석 행 갱신이 0행이면(탈퇴·삭제됨) 결과를 버린다 (TRD §13.7) — 이 순서 덕분에 FK 오류로 500이 나지 않는다. */
-  public boolean markDone(String analysisId, long recommendMs, RecommendResult r) {
+  /**
+   * AI 응답 저장 (TRD §13.2). generated → COMPLETED + recommendations 행, uncertain·no_concern →
+   * WITHHELD(추천 행 없음). 분석 행 갱신이 0행이면(탈퇴·삭제됨) 결과를 버린다 (TRD §13.7) — 이 순서 덕분에 FK 오류로 500이 나지 않는다.
+   */
+  public boolean markDone(String analysisId, long recommendMs, DiseaseRecommendResult result) {
+    RecommendResult r = result.recommendation();
     Boolean saved =
         tx.execute(
             status -> {
               int updated =
                   jdbc.sql(
                           """
-                          UPDATE analyses SET status = 'done', completed_at = now(), recommend_ms = :ms
-                          WHERE id = :id AND status = 'recommending'
+                          UPDATE analyses SET status = :status, recommendation_status = :recStatus,
+                                 guidance = CAST(:guidance AS jsonb), completed_at = now(),
+                                 recommend_ms = :ms
+                          WHERE id = :id AND status = 'GENERATING'
                           """)
                       .param("id", analysisId)
+                      .param(
+                          "status",
+                          (r == null ? AnalysisStatus.WITHHELD : AnalysisStatus.COMPLETED).code())
+                      .param("recStatus", result.status().code())
+                      .param("guidance", json.writeValueAsString(result.guidance()))
                       .param("ms", recommendMs)
                       .update();
               if (updated == 0) return false;
+              if (r == null) return true;
               jdbc.sql(
                       """
                       INSERT INTO recommendations
@@ -109,9 +123,9 @@ public class RecommendationQueueRepository {
   public boolean markFailed(String analysisId, ErrorCode code, Long recommendMs) {
     return jdbc.sql(
                 """
-                UPDATE analyses SET status = 'failed', error_code = :code, completed_at = now(),
+                UPDATE analyses SET status = 'FAILED', error_code = :code, completed_at = now(),
                        recommend_ms = :ms
-                WHERE id = :id AND status = 'recommending'
+                WHERE id = :id AND status = 'GENERATING'
                 """)
             .param("id", analysisId)
             .param("code", code.name())
@@ -120,14 +134,15 @@ public class RecommendationQueueRepository {
         > 0;
   }
 
-  /** 사용자 재요청: failed → queued (TRD §10.3). attempt_count는 누적 유지 */
+  /** 사용자 재요청: FAILED → QUEUED (TRD §10.3). 저장한 분류를 다시 쓰고 attempt_count는 누적 유지 */
   public boolean requeueFailed(String analysisId, long userId) {
     return jdbc.sql(
                 """
                 UPDATE analyses
-                SET status = 'queued', queued_at = now(), error_code = NULL, completed_at = NULL,
-                    rec_started_at = NULL, queue_wait_ms = NULL, recommend_ms = NULL
-                WHERE id = :id AND user_id = :userId AND status = 'failed'
+                SET status = 'QUEUED', queued_at = now(), error_code = NULL, completed_at = NULL,
+                    rec_started_at = NULL, queue_wait_ms = NULL, recommend_ms = NULL,
+                    recommendation_status = NULL, guidance = '[]'
+                WHERE id = :id AND user_id = :userId AND status = 'FAILED'
                 """)
             .param("id", analysisId)
             .param("userId", userId)
@@ -135,24 +150,24 @@ public class RecommendationQueueRepository {
         > 0;
   }
 
-  /** 내 queued_at보다 앞선 queued 건수 + 1 */
+  /** 내 queued_at보다 앞선 QUEUED 건수 + 1 */
   public long queuePosition(String analysisId) {
     return jdbc.sql(
             """
             SELECT COUNT(*) + 1 FROM analyses
-            WHERE status = 'queued' AND queued_at < (SELECT queued_at FROM analyses WHERE id = :id)
+            WHERE status = 'QUEUED' AND queued_at < (SELECT queued_at FROM analyses WHERE id = :id)
             """)
         .param("id", analysisId)
         .query(Long.class)
         .single();
   }
 
-  /** 최근 완료 20건 평균 추천 시간 (없으면 55000ms) */
+  /** 최근 생성 완료 20건 평균 추천 시간 (없으면 55000ms). 보류는 GPU 생성이 없어 뺀다 */
   public double averageRecommendMs() {
     return jdbc.sql(
             """
             SELECT COALESCE(AVG(recommend_ms), :fallback) FROM
-              (SELECT recommend_ms FROM analyses WHERE status = 'done' AND recommend_ms IS NOT NULL
+              (SELECT recommend_ms FROM analyses WHERE status = 'COMPLETED' AND recommend_ms IS NOT NULL
                ORDER BY completed_at DESC LIMIT 20) t
             """)
         .param("fallback", Constants.DEFAULT_RECOMMEND_MS)
@@ -161,22 +176,22 @@ public class RecommendationQueueRepository {
   }
 
   public long queuedCount() {
-    return jdbc.sql("SELECT COUNT(*) FROM analyses WHERE status = 'queued'")
+    return jdbc.sql("SELECT COUNT(*) FROM analyses WHERE status = 'QUEUED'")
         .query(Long.class)
         .single();
   }
 
-  /** 서버 기동 시: recommending → queued (queued_at 유지로 순서 보존) */
+  /** 서버 기동 시: GENERATING → QUEUED (queued_at 유지로 순서 보존) */
   public int recoverInterrupted() {
-    return jdbc.sql("UPDATE analyses SET status = 'queued' WHERE status = 'recommending'").update();
+    return jdbc.sql("UPDATE analyses SET status = 'QUEUED' WHERE status = 'GENERATING'").update();
   }
 
-  /** 장기 대기: queued가 maxWaitMin분을 넘으면 failed E3001 */
+  /** 장기 대기: QUEUED가 maxWaitMin분을 넘으면 FAILED E3001 */
   public List<String> expireStale(int maxWaitMin) {
     return jdbc.sql(
             """
-            UPDATE analyses SET status = 'failed', error_code = 'E3001', completed_at = now()
-            WHERE status = 'queued' AND queued_at < now() - make_interval(mins => :minutes)
+            UPDATE analyses SET status = 'FAILED', error_code = 'E3001', completed_at = now()
+            WHERE status = 'QUEUED' AND queued_at < now() - make_interval(mins => :minutes)
             RETURNING id
             """)
         .param("minutes", maxWaitMin)

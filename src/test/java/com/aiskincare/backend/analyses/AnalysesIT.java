@@ -34,11 +34,11 @@ class AnalysesIT extends IntegrationTestBase {
   private static final String SURVEY = surveyJson(Factories.defaultSurvey());
 
   private Res submitImage(LoggedIn me, byte[] image, String filename) {
-    return factories.submit(me, image, filename, SURVEY, "smartphone", null);
+    return factories.submit(me, image, filename, SURVEY, null);
   }
 
   @Test
-  @DisplayName("TC-ANA-01: 202, queued, queuePosition ≥ 1, analyses·skin_metrics·surveys 저장")
+  @DisplayName("TC-ANA-01: 202, QUEUED, 분류 결과, queuePosition ≥ 1, analyses(분류)·surveys 저장")
   void created() {
     LoggedIn me = factories.userWithToken();
     Res res = factories.submit(me);
@@ -47,26 +47,46 @@ class AnalysesIT extends IntegrationTestBase {
     JsonNode data = res.data();
     String id = data.get("analysisId").stringValue();
     assertThat(id).matches("^[0-9A-HJKMNP-TV-Z]{26}$");
-    assertThat(data.toString())
+    assertThat(data.get("status").stringValue()).isEqualTo("QUEUED");
+    assertThat(data.get("disease").toString())
         .isEqualTo(
-            "{\"analysisId\":\""
-                + id
-                + "\",\"status\":\"queued\",\"queuePosition\":1,\"estimatedWaitSec\":55}");
+            "{\"label\":\"아토피\",\"labelEn\":\"atopic\",\"confidence\":0.9,\"uncertain\":false,"
+                + "\"probabilities\":{\"건선\":0.019999999999999997,\"아토피\":0.9,"
+                + "\"여드름\":0.019999999999999997,\"정상\":0.019999999999999997,"
+                + "\"주사\":0.019999999999999997,\"지루\":0.019999999999999997},"
+                + "\"modelVersion\":\"quality_test_fixture_not_a_patient_prediction\",\"inferenceMs\":0}");
+    assertThat(data.get("recommendationStatus").isNull()).isTrue();
+    assertThat(data.get("recommendation").isNull()).isTrue();
+    assertThat(data.get("guidance").toString()).isEqualTo("[]");
+    assertThat(data.get("error").isNull()).isTrue();
+    assertThat(data.get("queuePosition").intValue()).isEqualTo(1);
+    assertThat(data.get("estimatedWaitSec").intValue()).isEqualTo(55);
 
     var row =
         jdbc.sql(
-                "SELECT user_id, status, device_type, is_demo, attempt_count, measure_ms FROM analyses WHERE id = :id")
+                """
+                SELECT user_id, status, disease_label, disease_confidence, disease_uncertain,
+                       disease_probabilities::text AS probabilities, disease_model_version,
+                       recommendation_status, guidance::text AS guidance, attempt_count, classify_ms
+                FROM analyses WHERE id = :id
+                """)
             .param("id", id)
             .query()
             .singleRow();
     assertThat(row)
         .containsEntry("user_id", me.user().id())
-        .containsEntry("status", "queued")
-        .containsEntry("device_type", "smartphone")
-        .containsEntry("is_demo", true)
+        .containsEntry("status", "QUEUED")
+        .containsEntry("disease_label", "atopic")
+        .containsEntry("disease_confidence", 0.9)
+        .containsEntry("disease_uncertain", false)
+        .containsEntry("disease_model_version", "quality_test_fixture_not_a_patient_prediction")
+        .containsEntry("recommendation_status", null)
+        .containsEntry("guidance", "[]")
         .containsEntry("attempt_count", 0);
-    assertThat(row.get("measure_ms")).isInstanceOf(Integer.class);
-    assertThat(count("skin_metrics")).isPositive();
+    assertThat(row.get("classify_ms")).isInstanceOf(Integer.class);
+    // 반올림하지 않고 받은 값 그대로 (추천 호출 때 다시 보낸다)
+    assertThat(TestHttp.json().readTree((String) row.get("probabilities")).get("건선").doubleValue())
+        .isEqualTo(0.019999999999999997);
 
     var survey =
         jdbc.sql(
@@ -91,39 +111,39 @@ class AnalysesIT extends IntegrationTestBase {
   }
 
   @Test
-  @DisplayName("GET /analyses/{id}: queued면 측정 결과 + recommendation pending + 순번")
+  @DisplayName("GET /analyses/{id}: POST와 같은 형태 — QUEUED면 분류 + 순번, 추천·guidance 비어 있음")
   void detailQueued() {
     LoggedIn me = factories.userWithToken();
-    String id = factories.submitOk(me);
+    Res created = factories.submit(me);
+    String id = created.data().get("analysisId").stringValue();
     Res res = http.get("/api/v1/analyses/" + id).bearer(me.accessToken()).send();
     assertThat(res.status()).isEqualTo(200);
     JsonNode data = res.data();
-    assertThat(data.get("analysisId").stringValue()).isEqualTo(id);
-    assertThat(data.get("status").stringValue()).isEqualTo("queued");
+    assertThat(data).isEqualTo(created.data());
+    assertThat(data.get("status").stringValue()).isEqualTo("QUEUED");
     assertThat(data.get("createdAt").stringValue())
         .matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$");
     assertThat(data.get("completedAt").isNull()).isTrue();
-    assertThat(data.get("deviceType").stringValue()).isEqualTo("smartphone");
-    assertThat(data.get("queuePosition").intValue()).isEqualTo(1);
-    assertThat(data.get("estimatedWaitSec").intValue()).isEqualTo(55);
-    JsonNode m = data.get("measurement");
-    assertThat(m.get("isDemo").booleanValue()).isTrue();
-    assertThat(m.get("confidence").doubleValue()).isZero();
-    assertThat(m.get("calibrationApplied").booleanValue()).isFalse();
-    assertThat(m.get("modelVersion").stringValue()).isEqualTo("skin_reg_stub");
-    assertThat(m.get("byRoi").isEmpty()).isTrue();
-    // fixture full_face (0.697, 0.493, 0.434, 0.658) → overall round(52.45) = 52
-    assertThat(m.get("overallScore").intValue()).isEqualTo(52);
-    assertThat(m.get("summary").toString())
-        .isEqualTo(
-            "[{\"metric\":\"moisture\",\"value\":70,\"score\":70,\"grade\":\"good\"},"
-                + "{\"metric\":\"elasticity\",\"value\":49,\"score\":49,\"grade\":\"normal\"},"
-                + "{\"metric\":\"pigmentation\",\"value\":43,\"score\":57,\"grade\":\"normal\"},"
-                + "{\"metric\":\"pore\",\"value\":66,\"score\":34,\"grade\":\"care\"}]");
-    assertThat(data.get("recommendation").toString()).isEqualTo("{\"status\":\"pending\"}");
+    assertThat(data.has("measurement")).isFalse();
+    assertThat(data.has("deviceType")).isFalse();
     assertThat(data.get("survey"))
         .isEqualTo(TestHttp.json().valueToTree(Factories.defaultSurvey()));
-    assertThat(data.get("error").isNull()).isTrue();
+  }
+
+  @Test
+  @DisplayName("(개정) deviceType을 보내도 무시하고 202 (개정 전 앱 호환)")
+  void deviceTypeIgnored() {
+    LoggedIn me = factories.userWithToken();
+    Res res =
+        http.post("/api/v1/analyses")
+            .bearer(me.accessToken())
+            .multipart(
+                new Multipart()
+                    .file("image", "face.png", "image/png", Factories.FACE)
+                    .field("survey", SURVEY)
+                    .field("deviceType", "webcam"))
+            .send();
+    assertThat(res.status()).isEqualTo(202);
   }
 
   @Test
@@ -132,8 +152,7 @@ class AnalysesIT extends IntegrationTestBase {
     LoggedIn me = factories.userWithToken();
     Map<String, Object> survey = new LinkedHashMap<>(Factories.defaultSurvey());
     survey.remove("gender");
-    Res res =
-        factories.submit(me, Factories.FACE, "face.png", surveyJson(survey), "smartphone", null);
+    Res res = factories.submit(me, Factories.FACE, "face.png", surveyJson(survey), null);
     assertThat(res.status()).isEqualTo(422);
     assertThat(res.body().get("error").toString())
         .isEqualTo(
@@ -146,18 +165,16 @@ class AnalysesIT extends IntegrationTestBase {
     Map<String, Object> tooMany = new LinkedHashMap<>(Factories.defaultSurvey());
     tooMany.put("concerns", List.of("pore", "acne", "wrinkle", "redness"));
     return Stream.of(
-        Arguments.of("survey JSON 파싱 실패", "{not json", "smartphone", "survey", "invalid_format"),
-        Arguments.of("survey 누락", null, "smartphone", "survey", "required"),
-        Arguments.of("deviceType 누락", SURVEY, null, "deviceType", "required"),
-        Arguments.of("deviceType 값 오류", SURVEY, "webcam", "deviceType", "invalid_value"),
-        Arguments.of("고민 4개", surveyJson(tooMany), "smartphone", "survey.concerns", "too_many"));
+        Arguments.of("survey JSON 파싱 실패", "{not json", "survey", "invalid_format"),
+        Arguments.of("survey 누락", null, "survey", "required"),
+        Arguments.of("고민 4개", surveyJson(tooMany), "survey.concerns", "too_many"));
   }
 
   @ParameterizedTest(name = "{0} → 422 E4002")
   @MethodSource("invalidInputs")
-  void invalid(String name, String survey, String deviceType, String field, String reason) {
+  void invalid(String name, String survey, String field, String reason) {
     LoggedIn me = factories.userWithToken();
-    Res res = factories.submit(me, Factories.FACE, "face.png", survey, deviceType, null);
+    Res res = factories.submit(me, Factories.FACE, "face.png", survey, null);
     assertThat(res.status()).isEqualTo(422);
     assertThat(res.errorCode()).isEqualTo("E4002");
     assertThat(res.body().get("error").get("detail").get("fields").toString())
@@ -171,7 +188,7 @@ class AnalysesIT extends IntegrationTestBase {
     Res res =
         http.post("/api/v1/analyses")
             .bearer(me.accessToken())
-            .multipart(new Multipart().field("survey", SURVEY).field("deviceType", "smartphone"))
+            .multipart(new Multipart().field("survey", SURVEY))
             .send();
     assertThat(res.status()).isEqualTo(422);
     assertThat(res.body().get("error").get("detail").get("fields").toString())
@@ -179,7 +196,7 @@ class AnalysesIT extends IntegrationTestBase {
   }
 
   @Test
-  @DisplayName("TC-ANA-03: no-face → 422 E2001, analyses 행 없음")
+  @DisplayName("TC-ANA-03: fixture no-face → 422 E2001, analyses 행 없음 (AI에는 아직 없는 오류 경로)")
   void noFace() {
     LoggedIn me = factories.userWithToken();
     Res res = factories.submit(me, "no-face");
@@ -257,7 +274,7 @@ class AnalysesIT extends IntegrationTestBase {
   @DisplayName("일일 한도(KST): 오늘 20건이면 429 E4004 daily_limit, Retry-After = 다음 KST 자정까지")
   void dailyLimit() {
     LoggedIn me = factories.userWithToken();
-    SeedData.insertDoneAnalyses(jdbc, TestHttp.json(), me.user().id(), 20, Instant.now());
+    SeedData.insertCompletedAnalyses(jdbc, TestHttp.json(), me.user().id(), 20, Instant.now());
     jdbc.sql("UPDATE analyses SET created_at = now()").update();
     Res res = factories.submit(me);
     assertThat(res.status()).isEqualTo(429);
@@ -283,19 +300,18 @@ class AnalysesIT extends IntegrationTestBase {
   @DisplayName("TC-SEC-01: IDOR — 남의 분석은 없는 것과 똑같이 404 E4003")
   class Idor {
     @Test
-    @DisplayName("조회·삭제·재요청·추이")
+    @DisplayName("조회·삭제·재요청")
     void otherUsers() {
       LoggedIn a = factories.userWithToken();
       LoggedIn b = factories.userWithToken();
       String bId =
-          SeedData.insertDoneAnalyses(jdbc, TestHttp.json(), b.user().id(), 1, Instant.now())
+          SeedData.insertCompletedAnalyses(jdbc, TestHttp.json(), b.user().id(), 1, Instant.now())
               .get(0);
       List<TestHttp.Req> requests =
           List.of(
               http.get("/api/v1/analyses/" + bId),
               http.delete("/api/v1/analyses/" + bId),
-              http.post("/api/v1/analyses/" + bId + "/recommendation/retry"),
-              http.get("/api/v1/analyses/" + bId + "/trend"));
+              http.post("/api/v1/analyses/" + bId + "/recommendation/retry"));
       for (TestHttp.Req req : requests) {
         Res res = req.bearer(a.accessToken()).send();
         assertThat(res.status()).isEqualTo(404);

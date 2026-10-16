@@ -1,5 +1,5 @@
-// TC-PERF-03 (NFR-PERF-03): 10명이 동시에 1건씩 제출.
-// 실패 0건, 10건 모두 done, 마지막 완료 약 10분 이내, 대기 순번은 줄어들기만 한다.
+// TC-PERF-03 (개정 수행계획서 2.1): 10명이 동시에 1건씩 제출.
+// 접수한 작업 누락 0건(10건 모두 COMPLETED·WITHHELD), 마지막 완료 약 10분 이내, 대기 순번은 줄어들기만 한다.
 //
 //   k6 run -e BASE_URL=... -e SEED_PASSWORD=... [-e IMAGE=face.jpg] load/perf-03-concurrent.js
 import { check } from 'k6';
@@ -45,7 +45,7 @@ export default function ({ tokens }) {
     return;
   }
   const { data, positions } = pollUntilFinished(token, res.json('data.analysisId'), 1200);
-  const done = data !== null && data.status === 'done';
+  const done = data !== null && (data.status === 'COMPLETED' || data.status === 'WITHHELD');
   if (!done) notDone.add(1);
   timeToDone.add(Date.now() - started);
   check(positions, { '대기 순번이 늘지 않음': (p) => p.every((v, i) => i === 0 || v <= p[i - 1]) });

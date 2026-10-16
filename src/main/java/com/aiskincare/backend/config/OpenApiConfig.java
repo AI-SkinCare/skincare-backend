@@ -64,7 +64,7 @@ public class OpenApiConfig {
                 .title("skincare-backend API")
                 .version("0.1.0")
                 .description(
-                    "피부 지표 측정·성분 추천 서비스 백엔드. 응답은 항상 `{ success, data }` / `{ success: false, error }`"
+                    "피부 이미지 분류(참고)·성분 추천 서비스 백엔드. 응답은 항상 `{ success, data }` / `{ success: false, error }`"
                         + " 봉투. 명세: skincare-ai/docs/project/03-api-spec.md, docs/TRD.md"))
         .servers(List.of(new Server().url("/").description("현재 서버")))
         .components(components);

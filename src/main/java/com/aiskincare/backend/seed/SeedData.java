@@ -1,38 +1,43 @@
 package com.aiskincare.backend.seed;
 
-import com.aiskincare.backend.analyses.Scoring;
-import com.aiskincare.backend.analyses.Scoring.MetricBp;
 import com.aiskincare.backend.common.enums.Concern;
-import com.aiskincare.backend.common.enums.Metric;
-import com.aiskincare.backend.common.enums.Roi;
+import com.aiskincare.backend.common.enums.DiseaseLabel;
 import com.aiskincare.backend.common.util.Ulid;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
-import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * 시드·통합 테스트가 같이 쓰는 완료(done) 분석 생성기 (TRD §8.4). 날짜를 최근 수 주에 분산, is_demo=false(이력·추이 화면 확인용),
- * full_face + 일부 ROI, 설문·추천 포함.
+ * 시드·통합 테스트가 같이 쓰는 완료(COMPLETED) 분석 생성기 (TRD §8.4). 날짜를 최근 수 주에 분산, 분류 라벨을 돌려 가며(정상 제외 5종), 설문·추천 행
+ * 포함. 분류는 시험용 값이고 실제 판정이 아니다.
  */
 public final class SeedData {
   private SeedData() {}
 
-  private static final List<Roi> SEED_ROIS =
-      List.of(Roi.FULL_FACE, Roi.FOREHEAD, Roi.CHEEK_LEFT, Roi.CHEEK_RIGHT, Roi.CHIN);
-  private static final List<List<Concern>> CONCERN_SETS =
+  /** 시드 분류의 model_version — 실제 분류기 출력이 아님을 드러낸다 */
+  public static final String SEED_MODEL_VERSION = "seed_not_a_patient_prediction";
+
+  private record Sample(DiseaseLabel label, List<Concern> concerns) {}
+
+  private static final List<Sample> SAMPLES =
       List.of(
-          List.of(Concern.PORE, Concern.PIGMENTATION),
-          List.of(Concern.DRYNESS),
-          List.of(Concern.PORE),
-          List.of(Concern.REDNESS, Concern.SENSITIVITY),
-          List.of(Concern.WRINKLE, Concern.SAGGING));
+          new Sample(DiseaseLabel.ATOPIC, List.of(Concern.SENSITIVITY)),
+          new Sample(DiseaseLabel.ACNE, List.of(Concern.ACNE)),
+          new Sample(DiseaseLabel.ROSACEA, List.of(Concern.REDNESS, Concern.SENSITIVITY)),
+          new Sample(DiseaseLabel.SEBORRHEIC, List.of(Concern.SENSITIVITY)),
+          new Sample(DiseaseLabel.PSORIASIS, List.of(Concern.SENSITIVITY)));
+
+  private static final List<String> GUIDANCE =
+      List.of(
+          "이미지 모델의 6종 분류 참고 결과이며 의학적 진단이 아닙니다. 분류 점수만으로 다른 질환을 배제할 수 없습니다.",
+          "성분 추천은 화장품 수준의 보조 관리 정보입니다. 질환 확인과 치료는 피부과 전문의와 상담하세요.");
 
   /** 결정적 의사 난수 (mulberry32) — 다시 돌려도 같은 값 */
   private static final class Prng {
@@ -51,78 +56,59 @@ public final class SeedData {
     }
   }
 
-  private static int clampBp(double bp) {
-    return (int) Math.max(0, Math.min(10000, Math.round(bp)));
+  /** 선택 라벨이 confidence, 나머지 5종이 남은 값을 나눠 가진다 (합 1, 선택 라벨이 최고 점수) */
+  private static Map<String, Double> probabilities(DiseaseLabel chosen, double confidence) {
+    double rest = (1 - confidence) / (DiseaseLabel.values().length - 1);
+    Map<String, Double> out = new LinkedHashMap<>();
+    for (DiseaseLabel label : DiseaseLabel.values()) {
+      out.put(label.label(), label == chosen ? confidence : rest);
+    }
+    return out;
   }
 
-  /** userId에게 done 분석 count건. 0번이 가장 최근, 약 1.5일 간격으로 과거로 간다 (과거일수록 지표가 조금 나쁨) */
-  public static List<String> insertDoneAnalyses(
+  /** userId에게 COMPLETED 분석 count건. 0번이 가장 최근, 약 1.5일 간격으로 과거로 간다 */
+  public static List<String> insertCompletedAnalyses(
       JdbcClient jdbc, JsonMapper json, long userId, int count, Instant now) {
     Prng random = new Prng((int) (userId * 7919 + count));
     List<String> ids = new ArrayList<>();
     for (int i = 0; i < count; i++) {
       Instant createdAt = now.minus(Duration.ofHours(i * 36L + 2));
       String id = Ulid.generate(createdAt.toEpochMilli());
-      int drift = i * 60;
-      MetricBp base =
-          new MetricBp(
-              clampBp(6200 - drift + random.next() * 800),
-              clampBp(7000 - drift + random.next() * 600),
-              clampBp(3800 + drift + random.next() * 600),
-              clampBp(4400 + drift + random.next() * 600));
-      Map<Roi, MetricBp> byRoi = new EnumMap<>(Roi.class);
-      for (Roi roi : SEED_ROIS) {
-        if (roi == Roi.FULL_FACE) {
-          byRoi.put(roi, base);
-          continue;
-        }
-        int[] v = new int[4];
-        for (Metric metric : Metric.values()) {
-          v[metric.ordinal()] = clampBp(base.get(metric) + (random.next() - 0.5) * 1200);
-        }
-        byRoi.put(roi, new MetricBp(v[0], v[1], v[2], v[3]));
-      }
-      var report = Scoring.report(byRoi);
+      Sample sample = SAMPLES.get(i % SAMPLES.size());
+      double confidence = Math.round((0.7 + random.next() * 0.25) * 100) / 100.0;
       long queueWaitMs = Math.round(2000 + random.next() * 20000);
-      long recommendMs = Math.round(48000 + random.next() * 12000);
+      long recommendMs = Math.round(40000 + random.next() * 12000);
       Instant recStartedAt = createdAt.plusMillis(queueWaitMs);
       Instant completedAt = recStartedAt.plusMillis(recommendMs);
-      List<Concern> concerns = CONCERN_SETS.get(i % CONCERN_SETS.size());
 
       jdbc.sql(
               """
-              INSERT INTO analyses (id, user_id, status, device_type, is_demo, confidence,
-                calibration_applied, overall_score, skin_model_version, measure_ms, queued_at,
-                rec_started_at, completed_at, queue_wait_ms, recommend_ms, attempt_count, created_at)
-              VALUES (:id, :userId, 'done', 'smartphone', false, 0.85, true, :overall, 'skin_reg_v1',
-                :measureMs, :createdAt, :recStartedAt, :completedAt, :queueWaitMs, :recommendMs, 1,
-                :createdAt)
+              INSERT INTO analyses (id, user_id, status, disease_label, disease_confidence,
+                disease_uncertain, disease_probabilities, disease_model_version, disease_inference_ms,
+                classify_ms, recommendation_status, guidance, queued_at, rec_started_at,
+                completed_at, queue_wait_ms, recommend_ms, attempt_count, created_at)
+              VALUES (:id, :userId, 'COMPLETED', :label, :confidence, false,
+                CAST(:probabilities AS jsonb), :model, :inferenceMs, :classifyMs, 'generated',
+                CAST(:guidance AS jsonb), :createdAt, :recStartedAt, :completedAt, :queueWaitMs,
+                :recommendMs, 1, :createdAt)
               """)
           .param("id", id)
           .param("userId", userId)
-          .param("overall", report.overallScore())
-          .param("measureMs", Math.round(800 + random.next() * 1500))
+          .param("label", sample.label().code())
+          .param("confidence", confidence)
+          .param(
+              "probabilities", json.writeValueAsString(probabilities(sample.label(), confidence)))
+          .param("model", SEED_MODEL_VERSION)
+          .param("inferenceMs", Math.round(30 + random.next() * 40))
+          .param("classifyMs", Math.round(300 + random.next() * 1500))
+          .param("guidance", json.writeValueAsString(GUIDANCE))
           .param("createdAt", utc(createdAt))
           .param("recStartedAt", utc(recStartedAt))
           .param("completedAt", utc(completedAt))
           .param("queueWaitMs", queueWaitMs)
           .param("recommendMs", recommendMs)
           .update();
-      byRoi.forEach(
-          (roi, bp) ->
-              jdbc.sql(
-                      """
-                      INSERT INTO skin_metrics (analysis_id, roi, moisture, elasticity, pigmentation, pore)
-                      VALUES (:id, :roi, :m, :e, :p, :o)
-                      """)
-                  .param("id", id)
-                  .param("roi", roi.code())
-                  .param("m", Scoring.bpToRatio(bp.moisture()))
-                  .param("e", Scoring.bpToRatio(bp.elasticity()))
-                  .param("p", Scoring.bpToRatio(bp.pigmentation()))
-                  .param("o", Scoring.bpToRatio(bp.pore()))
-                  .update());
-      Map<String, Object> survey = new java.util.LinkedHashMap<>();
+      Map<String, Object> survey = new LinkedHashMap<>();
       survey.put("gender", "female");
       survey.put("ageBand", "20s");
       survey.put("skinType", "combination");
@@ -130,7 +116,7 @@ public final class SeedData {
       survey.put("waterIntakeLevel", "low");
       survey.put("sunExposureLevel", "high");
       survey.put("stressLevel", "medium");
-      survey.put("concerns", concerns.stream().map(Concern::code).toList());
+      survey.put("concerns", List.of());
       survey.put("currentProducts", List.of("토너", "수분크림"));
       survey.put("note", null);
       jdbc.sql(
@@ -147,24 +133,19 @@ public final class SeedData {
                 reasoning, answer, disclaimer, input_notes, filtered, used_fallback, model_version,
                 inference_ms, created_at)
               VALUES (:id, 'combination', CAST(:concerns AS jsonb), CAST(:ingredients AS jsonb),
-                CAST(:routine AS jsonb), CAST(:reasoning AS jsonb), :answer, :disclaimer, '[]'::jsonb,
-                false, false, 'rec_sllm_v2', :inferenceMs, :createdAt)
+                CAST(:routine AS jsonb), CAST(:reasoning AS jsonb), :answer, :disclaimer,
+                CAST(:notes AS jsonb), false, false, 'rec_sllm_v2', :inferenceMs, :createdAt)
               """)
           .param("id", id)
-          .param("concerns", json.writeValueAsString(concerns.stream().map(Concern::code).toList()))
+          .param(
+              "concerns",
+              json.writeValueAsString(sample.concerns().stream().map(Concern::code).toList()))
           .param(
               "ingredients",
               json.writeValueAsString(
                   List.of(
-                      Map.of(
-                          "name",
-                          "나이아신아마이드",
-                          "purpose",
-                          "피지 분비와 모공 관리에 도움을 줄 수 있습니다.",
-                          "priority",
-                          1),
-                      Map.of(
-                          "name", "판테놀", "purpose", "피부 장벽을 지키는 데 도움을 줄 수 있습니다.", "priority", 2))))
+                      Map.of("name", "판테놀", "purpose", "피부 장벽을 지키는 데 도움을 줄 수 있습니다.", "priority", 1),
+                      Map.of("name", "세라마이드", "purpose", "보습 관리에 도움을 줄 수 있습니다.", "priority", 2))))
           .param(
               "routine",
               json.writeValueAsString(
@@ -176,11 +157,12 @@ public final class SeedData {
               "reasoning",
               json.writeValueAsString(
                   List.of(
-                      "시드 데이터입니다. 피지 분비와 생활 습관이 피부 상태에 영향을 줄 수 있습니다.",
-                      "나이아신아마이드와 판테놀은 피부 관리에 도움을 줄 수 있습니다.",
+                      "시드 데이터입니다. 건조함과 생활 습관이 피부 상태에 영향을 줄 수 있습니다.",
+                      "판테놀과 세라마이드는 피부 관리에 도움을 줄 수 있습니다.",
                       "아침에는 자외선 차단제를, 저녁에는 보습제를 챙겨 주세요.")))
-          .param("answer", "피지 관리와 자외선 차단을 함께 챙기는 것이 도움이 될 수 있습니다.")
+          .param("answer", "순한 세안과 충분한 보습을 함께 챙기는 것이 도움이 될 수 있습니다.")
           .param("disclaimer", "본 결과는 참고용 정보이며 의학적 진단이나 치료를 대신하지 않습니다. 피부 이상이 지속되면 피부과 전문의와 상담하세요.")
+          .param("notes", json.writeValueAsString(List.of("시드 데이터 (실제 판정 아님)")))
           .param("inferenceMs", recommendMs - 300)
           .param("createdAt", utc(completedAt))
           .update();

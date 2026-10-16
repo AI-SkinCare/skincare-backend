@@ -2,242 +2,234 @@ package com.aiskincare.backend.analyses;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.aiskincare.backend.aiclient.AiModels.DiseaseResult;
 import com.aiskincare.backend.aiclient.AiModels.Ingredient;
-import com.aiskincare.backend.aiclient.AiModels.MetricRatios;
 import com.aiskincare.backend.aiclient.AiModels.RoutineStep;
 import com.aiskincare.backend.analyses.AnalysisPresenter.QueueInfo;
+import com.aiskincare.backend.analyses.AnalysisRepository.ListRow;
 import com.aiskincare.backend.analyses.AnalysisRows.AnalysisRow;
 import com.aiskincare.backend.analyses.AnalysisRows.RecommendationRow;
-import com.aiskincare.backend.analyses.AnalysisRows.SkinMetricRow;
 import com.aiskincare.backend.analyses.dto.AnalysisResponses.AnalysisError;
 import com.aiskincare.backend.analyses.dto.AnalysisResponses.CodeLabel;
-import com.aiskincare.backend.analyses.dto.AnalysisResponses.Recommendation;
-import com.aiskincare.backend.analyses.dto.AnalysisResponses.TrendDelta;
-import com.aiskincare.backend.analyses.dto.AnalysisResponses.TrendPoint;
-import com.aiskincare.backend.analyses.dto.AnalysisResponses.TrendSummary;
 import com.aiskincare.backend.common.enums.AgeBand;
 import com.aiskincare.backend.common.enums.AnalysisStatus;
 import com.aiskincare.backend.common.enums.Concern;
-import com.aiskincare.backend.common.enums.DeviceType;
+import com.aiskincare.backend.common.enums.DiseaseLabel;
 import com.aiskincare.backend.common.enums.Gender;
-import com.aiskincare.backend.common.enums.Grade;
 import com.aiskincare.backend.common.enums.RecommendationStatus;
-import com.aiskincare.backend.common.enums.Roi;
 import com.aiskincare.backend.common.enums.RoutineTime;
 import com.aiskincare.backend.common.enums.SkinType;
 import java.time.Instant;
-import java.util.Iterator;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
-/** TRD §10.2·10.5 */
+/** TRD §10.2·10.4, §11.1 상태 표 */
 class AnalysisPresenterTest {
   private static final Instant CREATED = Instant.parse("2026-10-15T09:12:33.456Z");
+  private static final List<String> GUIDANCE = List.of("이미지 분류 참고 결과이며 의학적 진단이 아닙니다.");
 
+  private static DiseaseResult disease() {
+    Map<String, Double> probabilities = new LinkedHashMap<>();
+    for (DiseaseLabel label : DiseaseLabel.values()) {
+      probabilities.put(label.label(), label == DiseaseLabel.ATOPIC ? 0.9 : 0.02);
+    }
+    return new DiseaseResult(
+        DiseaseLabel.ATOPIC, 0.9, false, probabilities, "densenet121_s2_3ea9506", 45);
+  }
+
+  /** 저장된 값은 상태와 관계없이 채워 둔다 — presenter가 상태 표대로 걸러야 한다 */
   private static AnalysisRow analysis(
-      AnalysisStatus status, Instant completedAt, String errorCode) {
+      AnalysisStatus status, RecommendationStatus recStatus, Instant completedAt, String error) {
     return new AnalysisRow(
         "01J9Z3K5V8Q2M4N6P8R0S2T4V6",
         1,
         status,
-        DeviceType.SMARTPHONE,
-        false,
-        0.87,
-        true,
-        63,
-        "skin_reg_v1",
+        disease(),
         800,
+        recStatus,
+        GUIDANCE,
         CREATED,
         completedAt,
         1,
-        errorCode,
+        error,
         CREATED);
   }
-
-  private static final List<SkinMetricRow> METRICS =
-      List.of(
-          new SkinMetricRow(Roi.CHEEK_LEFT, new MetricRatios(0.66, 0.76, 0.41, 0.38)),
-          new SkinMetricRow(Roi.FULL_FACE, new MetricRatios(0.61, 0.74, 0.38, 0.45)),
-          new SkinMetricRow(Roi.FOREHEAD, new MetricRatios(0.58, 0.71, 0.35, 0.52)));
 
   private static final NormalizedSurvey SURVEY =
       new NormalizedSurvey(
           Gender.FEMALE,
           AgeBand.TWENTIES,
-          SkinType.COMBINATION,
+          SkinType.DRY,
           null,
           null,
           null,
           null,
-          List.of(Concern.PORE),
+          List.of(),
           List.of(),
           null);
 
   private static final RecommendationRow RECOMMENDATION =
       new RecommendationRow(
-          SkinType.COMBINATION,
-          List.of(Concern.PORE, Concern.PIGMENTATION),
-          List.of(new Ingredient("나이아신아마이드", null, 1)),
-          List.of(new RoutineStep(1, RoutineTime.MORNING, "세안합니다.")),
+          SkinType.DRY,
+          List.of(Concern.SENSITIVITY),
+          List.of(new Ingredient("판테놀", null, 1)),
+          List.of(new RoutineStep(1, RoutineTime.ANYTIME, "보습합니다.")),
           List.of("a", "b", "c"),
           "요약",
           "면책",
           List.of(),
+          true,
           false,
-          false,
-          "rec_sllm_v2");
+          "rec_sllm_v2",
+          43000);
 
   @Test
-  @DisplayName("done: 측정·추천 전체, 시간은 밀리초 없는 UTC, byRoi는 full_face 제외·순서 고정")
-  void done() {
+  @DisplayName("COMPLETED: 분류 + generated + 추천 전체 + guidance, 시간은 밀리초 없는 UTC")
+  void completed() {
     var dto =
-        AnalysisPresenter.detail(
-            analysis(AnalysisStatus.DONE, Instant.parse("2026-10-15T09:13:31.999Z"), null),
-            METRICS,
+        AnalysisPresenter.view(
+            analysis(
+                AnalysisStatus.COMPLETED,
+                RecommendationStatus.GENERATED,
+                Instant.parse("2026-10-15T09:13:31.999Z"),
+                null),
             SURVEY,
             RECOMMENDATION,
             QueueInfo.NONE);
     assertThat(dto.createdAt()).isEqualTo("2026-10-15T09:12:33Z");
     assertThat(dto.completedAt()).isEqualTo("2026-10-15T09:13:31Z");
-    assertThat(dto.measurement().summary())
-        .extracting(s -> List.of(s.value(), s.score(), s.grade()))
-        .containsExactly(
-            List.of(61, 61, Grade.NORMAL),
-            List.of(74, 74, Grade.GOOD),
-            List.of(38, 62, Grade.NORMAL),
-            List.of(45, 55, Grade.NORMAL));
-    assertThat(dto.measurement().byRoi())
-        .extracting(r -> List.of(r.roi(), r.overallScore()))
-        .containsExactly(List.of(Roi.FOREHEAD, 61), List.of(Roi.CHEEK_LEFT, 66));
-    assertThat(dto.recommendation().status()).isEqualTo(RecommendationStatus.DONE);
-    assertThat(dto.recommendation().skinType())
-        .isEqualTo(new CodeLabel<>(SkinType.COMBINATION, "복합성"));
+    assertThat(dto.disease().label()).isEqualTo("아토피");
+    assertThat(dto.disease().labelEn()).isEqualTo(DiseaseLabel.ATOPIC);
+    assertThat(dto.recommendationStatus()).isEqualTo(RecommendationStatus.GENERATED);
+    assertThat(dto.recommendation().skinType()).isEqualTo(new CodeLabel<>(SkinType.DRY, "건성"));
     assertThat(dto.recommendation().concerns())
-        .containsExactly(
-            new CodeLabel<>(Concern.PORE, "모공"),
-            new CodeLabel<>(Concern.PIGMENTATION, "미백(색소침착/기미/칙칙함)"));
+        .containsExactly(new CodeLabel<>(Concern.SENSITIVITY, "민감성(트러블/자극감)"));
+    assertThat(dto.recommendation().ingredients().get(0).purpose()).isNull();
+    assertThat(dto.recommendation().inferenceMs()).isEqualTo(43000);
+    assertThat(dto.guidance()).isEqualTo(GUIDANCE);
+    assertThat(dto.error()).isNull();
+    assertThat(dto.queuePosition()).isNull();
+  }
+
+  @Test
+  @DisplayName("WITHHELD: 보류 사유 + guidance, 추천 null, 오류 아님")
+  void withheld() {
+    var dto =
+        AnalysisPresenter.view(
+            analysis(AnalysisStatus.WITHHELD, RecommendationStatus.UNCERTAIN, CREATED, null),
+            SURVEY,
+            null,
+            QueueInfo.NONE);
+    assertThat(dto.recommendationStatus()).isEqualTo(RecommendationStatus.UNCERTAIN);
+    assertThat(dto.recommendation()).isNull();
+    assertThat(dto.guidance()).isEqualTo(GUIDANCE);
     assertThat(dto.error()).isNull();
   }
 
   @Test
-  @DisplayName("JSON: 설문은 명세 순서, pending 추천은 status만, 열거형은 소문자 코드")
-  void json() {
-    var dto =
-        AnalysisPresenter.detail(
-            analysis(AnalysisStatus.QUEUED, null, null),
-            METRICS,
-            SURVEY,
-            null,
-            new QueueInfo(2L, 110L));
-    var node = JsonMapper.builder().build().valueToTree(dto);
-    Iterator<String> names = node.get("survey").propertyNames().iterator();
-    List<String> keys = new java.util.ArrayList<>();
-    names.forEachRemaining(keys::add);
-    assertThat(keys)
-        .containsExactly(
-            "gender",
-            "ageBand",
-            "skinType",
-            "sleepHours",
-            "waterIntakeLevel",
-            "sunExposureLevel",
-            "stressLevel",
-            "concerns",
-            "currentProducts",
-            "note");
-    assertThat(node.get("recommendation").toString()).isEqualTo("{\"status\":\"pending\"}");
-    assertThat(node.get("status").asString()).isEqualTo("queued");
-    assertThat(node.get("deviceType").asString()).isEqualTo("smartphone");
-    assertThat(node.get("measurement").get("summary").get(0).get("metric").asString())
-        .isEqualTo("moisture");
-    assertThat(node.get("completedAt").isNull()).isTrue();
-    assertThat(node.get("error").isNull()).isTrue();
-  }
-
-  @Test
-  @DisplayName("queued: recommendation pending + 순번·예상 대기")
+  @DisplayName("QUEUED: 분류만 + 순번·예상 대기, 추천 상태·guidance는 비움")
   void queued() {
     var dto =
-        AnalysisPresenter.detail(
-            analysis(AnalysisStatus.QUEUED, null, null),
-            METRICS,
+        AnalysisPresenter.view(
+            analysis(AnalysisStatus.QUEUED, RecommendationStatus.GENERATED, null, null),
             SURVEY,
-            null,
+            RECOMMENDATION,
             new QueueInfo(2L, 110L));
-    assertThat(dto.recommendation()).isEqualTo(Recommendation.status(RecommendationStatus.PENDING));
+    assertThat(dto.disease()).isNotNull();
+    assertThat(dto.recommendationStatus()).isNull();
+    assertThat(dto.recommendation()).isNull();
+    assertThat(dto.guidance()).isEmpty();
     assertThat(dto.queuePosition()).isEqualTo(2L);
     assertThat(dto.estimatedWaitSec()).isEqualTo(110L);
   }
 
   @Test
-  @DisplayName("recommending: pending, 순번 null")
-  void recommending() {
+  @DisplayName("GENERATING: 순번 null")
+  void generating() {
     var dto =
-        AnalysisPresenter.detail(
-            analysis(AnalysisStatus.RECOMMENDING, null, null),
-            METRICS,
+        AnalysisPresenter.view(
+            analysis(AnalysisStatus.GENERATING, null, null, null),
             SURVEY,
             null,
             new QueueInfo(1L, 55L));
-    assertThat(dto.recommendation()).isEqualTo(Recommendation.status(RecommendationStatus.PENDING));
+    assertThat(dto.recommendation()).isNull();
     assertThat(dto.queuePosition()).isNull();
     assertThat(dto.estimatedWaitSec()).isNull();
   }
 
   @Test
-  @DisplayName("failed: recommendation failed + error code·message, 측정은 그대로")
+  @DisplayName("FAILED: error code·message, 분류는 그대로, 추천 상태 없음")
   void failed() {
     var dto =
-        AnalysisPresenter.detail(
-            analysis(AnalysisStatus.FAILED, CREATED, "E3002"),
-            METRICS,
-            SURVEY,
-            null,
-            QueueInfo.NONE);
-    assertThat(dto.recommendation()).isEqualTo(Recommendation.status(RecommendationStatus.FAILED));
+        AnalysisPresenter.view(
+            analysis(AnalysisStatus.FAILED, null, CREATED, "E3002"), SURVEY, null, QueueInfo.NONE);
     assertThat(dto.error()).isEqualTo(new AnalysisError("E3002", "추천을 만들지 못했어요. 다시 시도해 주세요."));
-    assertThat(dto.measurement().overallScore()).isEqualTo(63);
+    assertThat(dto.recommendationStatus()).isNull();
+    assertThat(dto.guidance()).isEmpty();
+    assertThat(dto.disease().confidence()).isEqualTo(0.9);
   }
 
   @Test
-  @DisplayName("failed인데 저장된 코드가 실패 코드가 아니면 E4001")
+  @DisplayName("FAILED인데 저장된 코드가 실패 코드가 아니면 E4001")
   void failedUnknownCode() {
     var dto =
-        AnalysisPresenter.detail(
-            analysis(AnalysisStatus.FAILED, CREATED, "E2001"),
-            METRICS,
-            SURVEY,
-            null,
-            QueueInfo.NONE);
+        AnalysisPresenter.view(
+            analysis(AnalysisStatus.FAILED, null, CREATED, "E2001"), SURVEY, null, QueueInfo.NONE);
     assertThat(dto.error().code()).isEqualTo("E4001");
   }
 
   @Test
-  @DisplayName("trend: date는 KST 날짜, delta = current − previous")
-  void trend() {
-    var row =
-        new AnalysisRow(
-            "01J9Z3K5V8Q2M4N6P8R0S2T4V6",
-            1,
-            AnalysisStatus.DONE,
-            DeviceType.SMARTPHONE,
-            false,
-            0.87,
-            true,
-            63,
-            "skin_reg_v1",
-            800,
-            CREATED,
-            CREATED,
-            1,
+  @DisplayName("JSON: 개정 B.1 필드가 먼저, status 대문자·recommendationStatus 소문자, labelEn 코드, 확률 6종 순서")
+  void json() {
+    var dto =
+        AnalysisPresenter.view(
+            analysis(AnalysisStatus.WITHHELD, RecommendationStatus.NO_CONCERN, CREATED, null),
+            SURVEY,
             null,
-            Instant.parse("2026-10-15T16:00:00Z"));
-    TrendPoint current = AnalysisPresenter.trendPoint(row, METRICS);
-    assertThat(current.date()).isEqualTo("2026-10-16"); // UTC 16시 = KST 다음 날 01시
-    TrendPoint previous = new TrendPoint("x", "2026-10-01", 60, new TrendSummary(54, 72, 40, 47));
-    assertThat(AnalysisPresenter.delta(current, previous))
-        .isEqualTo(new TrendDelta(3, 7, 2, -2, -2));
+            QueueInfo.NONE);
+    var node = JsonMapper.builder().build().valueToTree(dto);
+    List<String> keys = new ArrayList<>();
+    node.propertyNames().forEach(keys::add);
+    assertThat(keys)
+        .containsExactly(
+            "analysisId",
+            "status",
+            "disease",
+            "recommendationStatus",
+            "recommendation",
+            "guidance",
+            "error",
+            "queuePosition",
+            "estimatedWaitSec",
+            "createdAt",
+            "completedAt",
+            "survey");
+    assertThat(node.get("status").asString()).isEqualTo("WITHHELD");
+    assertThat(node.get("recommendationStatus").asString()).isEqualTo("no_concern");
+    assertThat(node.get("recommendation").isNull()).isTrue();
+    assertThat(node.get("disease").get("labelEn").asString()).isEqualTo("atopic");
+    List<String> labels = new ArrayList<>();
+    node.get("disease").get("probabilities").propertyNames().forEach(labels::add);
+    assertThat(labels).containsExactly("건선", "아토피", "여드름", "정상", "주사", "지루");
+  }
+
+  @Test
+  @DisplayName("이력 항목: 분류 + 추천 상태 + 고민 코드")
+  void listItem() {
+    var item =
+        AnalysisPresenter.listItem(
+            new ListRow(
+                analysis(AnalysisStatus.COMPLETED, RecommendationStatus.GENERATED, CREATED, null),
+                List.of(Concern.SENSITIVITY)));
+    assertThat(item.status()).isEqualTo(AnalysisStatus.COMPLETED);
+    assertThat(item.recommendationStatus()).isEqualTo(RecommendationStatus.GENERATED);
+    assertThat(item.disease().labelEn()).isEqualTo(DiseaseLabel.ATOPIC);
+    assertThat(item.concerns()).containsExactly(Concern.SENSITIVITY);
+    assertThat(item.createdAt()).isEqualTo("2026-10-15T09:12:33Z");
   }
 }

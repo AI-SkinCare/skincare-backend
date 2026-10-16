@@ -4,7 +4,6 @@ import com.aiskincare.backend.aiclient.AiClient;
 import com.aiskincare.backend.config.AppProperties;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
@@ -13,8 +12,9 @@ import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Service;
 
 /**
- * TRD §14.1 — AI 가용성. 기동 시 1회, 이후 AI_HEALTH_INTERVAL_MS마다 GET /health(5초). 첫 검사 전에는 false. 바뀔 때만 로그
- * (끊김 WARN, 복구 INFO).
+ * TRD §14.1 — AI 가용성. 기동 시 1회, 이후 AI_HEALTH_INTERVAL_MS마다 GET /health(5초). status ok이고 분류기가 로드돼
+ * 있어야(disease_loaded) 가용 — 분류기가 꺼져 있으면 /infer/disease가 503이라 접수를 미리 막는다 (TRD §12.6). 첫 검사 전에는
+ * false. 바뀔 때만 로그(끊김 WARN, 복구 INFO).
  */
 @Service
 public class AiHealthService {
@@ -27,7 +27,6 @@ public class AiHealthService {
   private final TaskScheduler scheduler;
   private volatile boolean available = false;
   private volatile Instant checkedAt = null;
-  private volatile String lastSkinBackend = null;
   private volatile boolean started = false;
   private final AtomicReference<CompletableFuture<Boolean>> inFlight = new AtomicReference<>();
 
@@ -68,7 +67,7 @@ public class AiHealthService {
     scheduler.scheduleAtFixedRate(this::check, Instant.now().plus(interval), interval);
   }
 
-  /** 측정 중 connection 오류 → 즉시 비가용으로 두고 다음 검사를 앞당긴다 [구현 결정] */
+  /** 분류 중 connection 오류 → 즉시 비가용으로 두고 다음 검사를 앞당긴다 [구현 결정] */
   public void markUnavailable(String reason) {
     setAvailable(false, reason);
     if (started) scheduler.schedule(this::check, Instant.now());
@@ -79,16 +78,9 @@ public class AiHealthService {
     String reason = "ok";
     try {
       var health = ai.health();
-      ok = "ok".equals(health.status());
-      if (!ok) reason = "status:" + health.status();
-      if (ok && !Objects.equals(health.skinBackend(), lastSkinBackend)) {
-        lastSkinBackend = health.skinBackend();
-        if ("stub".equals(health.skinBackend())) {
-          log.atInfo()
-              .addKeyValue("detail", "측정값은 데모 값 (is_demo=true)")
-              .log("ai_skin_backend_stub");
-        }
-      }
+      ok = "ok".equals(health.status()) && health.diseaseLoaded();
+      if (!"ok".equals(health.status())) reason = "status:" + health.status();
+      else if (!health.diseaseLoaded()) reason = "disease_not_loaded";
     } catch (RuntimeException e) {
       reason = e.getMessage();
     }

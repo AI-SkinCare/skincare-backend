@@ -16,7 +16,7 @@ class AiErrorMapperTest {
     return AiError.http(status, code, null);
   }
 
-  static Stream<Arguments> measure() {
+  static Stream<Arguments> classify() {
     return Stream.of(
         Arguments.of(
             "TC-ANA-10: AI 401 → 503 E3001 + ERROR",
@@ -28,6 +28,7 @@ class AiErrorMapperTest {
         Arguments.of("422 E2001 그대로", http(422, "E2001"), ErrorCode.E2001, Level.INFO),
         Arguments.of("422 E2002 그대로", http(422, "E2002"), ErrorCode.E2002, Level.INFO),
         Arguments.of("422 E4002 → E4001 (변환 버그)", http(422, "E4002"), ErrorCode.E4001, Level.ERROR),
+        Arguments.of("(개정) 503 E3001 분류기 비활성 그대로", http(503, "E3001"), ErrorCode.E3001, Level.WARN),
         Arguments.of("503 E3003 그대로", http(503, "E3003"), ErrorCode.E3003, Level.WARN),
         Arguments.of("504 E3002 그대로", http(504, "E3002"), ErrorCode.E3002, Level.WARN),
         Arguments.of(
@@ -40,32 +41,35 @@ class AiErrorMapperTest {
         Arguments.of("그 밖의 5xx → E4001", http(500, "E4001"), ErrorCode.E4001, Level.ERROR));
   }
 
-  @ParameterizedTest(name = "측정 {0}")
+  @ParameterizedTest(name = "분류 {0}")
   @MethodSource
-  void measure(String name, AiError error, ErrorCode code, Level level) {
-    var mapped = AiErrorMapper.measure(error);
+  void classify(String name, AiError error, ErrorCode code, Level level) {
+    var mapped = AiErrorMapper.classify(error);
     assertThat(mapped.code()).isEqualTo(code);
     assertThat(mapped.logLevel()).isEqualTo(level);
   }
 
   @Test
-  void measureUsesAiMessageForE2001E2002() {
-    assertThat(AiErrorMapper.measure(AiError.http(422, "E2002", "사진이 너무 어두워요.")).message())
-        .isEqualTo("사진이 너무 어두워요.");
-    assertThat(AiErrorMapper.measure(http(422, "E2001")).message()).isNull();
+  void classifyUsesAiMessageForE2001E2002() {
+    assertThat(
+            AiErrorMapper.classify(AiError.http(422, "E2002", "이미지를 해석할 수 없습니다. 다시 촬영해 주세요."))
+                .message())
+        .isEqualTo("이미지를 해석할 수 없습니다. 다시 촬영해 주세요.");
+    assertThat(AiErrorMapper.classify(http(422, "E2001")).message()).isNull();
   }
 
   @Test
-  void measureRetriesOnlyConnection() {
-    assertThat(AiErrorMapper.measureRetryable(AiError.of(AiError.Kind.CONNECTION))).isTrue();
-    assertThat(AiErrorMapper.measureRetryable(AiError.of(AiError.Kind.TIMEOUT))).isFalse();
-    assertThat(AiErrorMapper.measureRetryable(http(503, "E3003"))).isFalse();
+  void classifyRetriesOnlyConnection() {
+    assertThat(AiErrorMapper.classifyRetryable(AiError.of(AiError.Kind.CONNECTION))).isTrue();
+    assertThat(AiErrorMapper.classifyRetryable(AiError.of(AiError.Kind.TIMEOUT))).isFalse();
+    assertThat(AiErrorMapper.classifyRetryable(http(503, "E3003"))).isFalse();
   }
 
   static Stream<Arguments> recommend() {
     return Stream.of(
         Arguments.of("401 → E3001 + ERROR", http(401, "E1001"), ErrorCode.E3001, Level.ERROR),
         Arguments.of("422 E4002 → E4001", http(422, "E4002"), ErrorCode.E4001, Level.ERROR),
+        Arguments.of("503 E3001 → E3001", http(503, "E3001"), ErrorCode.E3001, Level.WARN),
         Arguments.of("503 E3003 → E3003", http(503, "E3003"), ErrorCode.E3003, Level.WARN),
         Arguments.of("504 E3002 → E3002", http(504, "E3002"), ErrorCode.E3002, Level.WARN),
         Arguments.of(

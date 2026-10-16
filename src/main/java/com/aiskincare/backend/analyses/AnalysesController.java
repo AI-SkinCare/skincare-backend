@@ -2,10 +2,8 @@ package com.aiskincare.backend.analyses;
 
 import com.aiskincare.backend.aiclient.AiModels.AiCallContext;
 import com.aiskincare.backend.aiclient.FixtureScenarioStore;
-import com.aiskincare.backend.analyses.dto.AnalysisResponses.AnalysisCreated;
-import com.aiskincare.backend.analyses.dto.AnalysisResponses.AnalysisDetail;
 import com.aiskincare.backend.analyses.dto.AnalysisResponses.AnalysisList;
-import com.aiskincare.backend.analyses.dto.AnalysisResponses.AnalysisTrend;
+import com.aiskincare.backend.analyses.dto.AnalysisResponses.AnalysisView;
 import com.aiskincare.backend.analyses.dto.AnalysisSubmissionForm;
 import com.aiskincare.backend.common.error.ApiException;
 import com.aiskincare.backend.common.error.ErrorCode;
@@ -52,9 +50,9 @@ public class AnalysesController {
 
   /**
    * TRD §10.1 처리 순서: 인증 → 요청 제한(E4004) → 대기열 상한(E3003) → AI 가용성(E3001) → 파일 수신(메모리, 413 E2003) → 형식
-   * 검증 → AI 측정 → 저장 → 202. 인터셉터가 먼저 돌고 multipart는 lazy라 제한에 걸리면 파일을 읽지 않는다.
+   * 검증 → AI 이미지 분류 → 저장(QUEUED) → 202. 인터셉터가 먼저 돌고 multipart는 lazy라 제한에 걸리면 파일을 읽지 않는다.
    */
-  @Operation(summary = "분석 요청 — 측정 + 추천 대기열 등록 (FR-ANA-01·02·05)")
+  @Operation(summary = "분석 요청 — 이미지 분류 + 추천 대기열 등록 (FR-ANA-01·02·05)")
   @AnalysisGuards
   @ApiErrorCodes({
     ErrorCode.E4004,
@@ -77,17 +75,15 @@ public class AnalysesController {
               mediaType = MediaType.MULTIPART_FORM_DATA_VALUE,
               schema = @Schema(implementation = AnalysisSubmissionForm.class)))
   @PostMapping
-  public ApiEnvelope<AnalysisCreated> create(
+  public ApiEnvelope<AnalysisView> create(
       @CurrentUser AuthUser user,
       @Parameter(hidden = true) @RequestPart(value = "image", required = false) MultipartFile image,
       @Parameter(hidden = true) @RequestParam(value = "survey", required = false) String survey,
-      @Parameter(hidden = true) @RequestParam(value = "deviceType", required = false)
-          String deviceType,
       @Parameter(in = ParameterIn.HEADER, description = "개발·테스트용 (production에선 무시)")
           @RequestHeader(value = FixtureScenarioStore.HEADER, required = false)
           String scenario,
       HttpServletRequest request) {
-    Submission submission = Submission.validate(image, survey, deviceType);
+    Submission submission = Submission.validate(image, survey);
     var ctx = new AiCallContext(RequestIdFilter.of(request), scenarios.fromHeader(scenario));
     return ApiEnvelope.ok(analyses.create(user.id(), submission, ctx));
   }
@@ -102,32 +98,25 @@ public class AnalysesController {
     return ApiEnvelope.ok(analyses.list(user.id(), page, size));
   }
 
-  @Operation(summary = "분석 결과·진행 상태 (FR-ANA-03, FR-REP-01·02)")
+  @Operation(summary = "분석 결과·진행 상태 — 분류 + 추천 또는 보류 (FR-ANA-03, FR-REP-01·02)")
   @ApiErrorCodes(ErrorCode.E4003)
   @GetMapping("/{id}")
-  public ApiEnvelope<AnalysisDetail> findOne(@CurrentUser AuthUser user, @PathVariable String id) {
+  public ApiEnvelope<AnalysisView> findOne(@CurrentUser AuthUser user, @PathVariable String id) {
     return ApiEnvelope.ok(analyses.findOne(user.id(), ulid(id)));
   }
 
-  @Operation(summary = "실패한 추천 재요청 (FR-ANA-04)")
+  @Operation(summary = "실패한 추천 재요청 — 저장한 분류로 추천만 다시 (FR-ANA-04)")
   @AnalysisGuards(checkAiAvailability = false)
   @ApiErrorCodes({ErrorCode.E4004, ErrorCode.E3003, ErrorCode.E4003, ErrorCode.E4005})
   @ResponseStatus(HttpStatus.ACCEPTED)
   @PostMapping("/{id}/recommendation/retry")
-  public ApiEnvelope<AnalysisCreated> retry(
+  public ApiEnvelope<AnalysisView> retry(
       @CurrentUser AuthUser user,
       @PathVariable String id,
       @Parameter(in = ParameterIn.HEADER, description = "개발·테스트용 (production에선 무시)")
           @RequestHeader(value = FixtureScenarioStore.HEADER, required = false)
           String scenario) {
     return ApiEnvelope.ok(analyses.retry(user.id(), ulid(id), scenarios.fromHeader(scenario)));
-  }
-
-  @Operation(summary = "직전 분석 대비 변화 (FR-HIS-02)")
-  @ApiErrorCodes(ErrorCode.E4003)
-  @GetMapping("/{id}/trend")
-  public ApiEnvelope<AnalysisTrend> trend(@CurrentUser AuthUser user, @PathVariable String id) {
-    return ApiEnvelope.ok(analyses.trend(user.id(), ulid(id)));
   }
 
   @Operation(summary = "이력 삭제 (FR-HIS-03)")

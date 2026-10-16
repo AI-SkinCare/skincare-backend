@@ -20,9 +20,9 @@ import org.springframework.web.servlet.HandlerInterceptor;
  * TRD §10.1 처리 순서 2–4. 인증 인터셉터 다음, 파일 수신(multipart는 lazy) 전에 돈다 — 제한에 걸리면 파일을 읽지 않는다.
  *
  * <ol>
- *   <li>진행 중 분석(queued·recommending) 또는 처리 중 제출 → 429 E4004 in_progress
+ *   <li>진행 중 분석(QUEUED·GENERATING) 또는 처리 중 제출 → 429 E4004 in_progress
  *   <li>오늘(KST) 생성한 분석 수 ≥ ANALYSIS_DAILY_LIMIT → 429 E4004 daily_limit
- *   <li>queued 건수 ≥ REC_QUEUE_LIMIT → 503 E3003 (검사와 INSERT 사이 경합으로 1–2건 넘을 수 있음, 시연 규모에서 허용)
+ *   <li>QUEUED 건수 ≥ REC_QUEUE_LIMIT → 503 E3003 (검사와 INSERT 사이 경합으로 1–2건 넘을 수 있음, 시연 규모에서 허용)
  *   <li>aiAvailable=false → 503 E3001
  * </ol>
  *

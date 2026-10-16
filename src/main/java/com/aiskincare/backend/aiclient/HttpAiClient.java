@@ -2,10 +2,10 @@ package com.aiskincare.backend.aiclient;
 
 import com.aiskincare.backend.aiclient.AiModels.AiCallContext;
 import com.aiskincare.backend.aiclient.AiModels.AiHealth;
-import com.aiskincare.backend.aiclient.AiModels.MeasureSkinInput;
-import com.aiskincare.backend.aiclient.AiModels.RecommendRequest;
-import com.aiskincare.backend.aiclient.AiModels.RecommendResult;
-import com.aiskincare.backend.aiclient.AiModels.SkinMetricsResult;
+import com.aiskincare.backend.aiclient.AiModels.ClassifyInput;
+import com.aiskincare.backend.aiclient.AiModels.DiseaseRecommendRequest;
+import com.aiskincare.backend.aiclient.AiModels.DiseaseRecommendResult;
+import com.aiskincare.backend.aiclient.AiModels.DiseaseResult;
 import com.aiskincare.backend.config.Constants;
 import java.net.SocketTimeoutException;
 import java.net.http.HttpClient;
@@ -27,27 +27,27 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-/** AI 서버 HTTP 클라이언트 (TRD §12.2). 재시도는 하지 않는다 — 재시도 정책은 호출하는 쪽(측정 경로·워커)이 §12.5로 정한다. */
+/** AI 서버 HTTP 클라이언트 (TRD §12.2). 재시도는 하지 않는다 — 재시도 정책은 호출하는 쪽(분류 경로·워커)이 §12.5로 정한다. */
 public class HttpAiClient implements AiClient {
   /** Cloudflare Error 524 — 원 서버가 연결은 받았지만 125초 안에 응답하지 않음 */
   private static final int CLOUDFLARE_ORIGIN_TIMEOUT = 524;
 
   public record Options(
-      String baseUrl, String internalToken, int skinTimeoutMs, int recTimeoutMs) {}
+      String baseUrl, String internalToken, int classifyTimeoutMs, int recTimeoutMs) {}
 
   private record Raw(int status, byte[] body) {}
 
   private final Options options;
   private final JsonMapper json;
   private final RestClient healthClient;
-  private final RestClient skinClient;
+  private final RestClient classifyClient;
   private final RestClient recClient;
 
   public HttpAiClient(Options options, JsonMapper json) {
     this.options = options;
     this.json = json;
     this.healthClient = client(Constants.AI_HEALTH_TIMEOUT);
-    this.skinClient = client(Duration.ofMillis(options.skinTimeoutMs()));
+    this.classifyClient = client(Duration.ofMillis(options.classifyTimeoutMs()));
     this.recClient = client(Duration.ofMillis(options.recTimeoutMs()));
   }
 
@@ -73,8 +73,9 @@ public class HttpAiClient implements AiClient {
     return send(healthClient, HttpMethod.GET, "/model-info", authHeaders(null), null, null);
   }
 
+  /** multipart image 하나 (TRD §12.3). Content-Type은 시그니처로 판별한 값 */
   @Override
-  public SkinMetricsResult measureSkin(MeasureSkinInput input, AiCallContext ctx) {
+  public DiseaseResult classify(ClassifyInput input, AiCallContext ctx) {
     String filename = "image/png".equals(input.mimeType()) ? "image.png" : "image.jpg";
     HttpHeaders fileHeaders = new HttpHeaders();
     fileHeaders.setContentType(MediaType.parseMediaType(input.mimeType()));
@@ -90,30 +91,29 @@ public class HttpAiClient implements AiClient {
               }
             },
             fileHeaders));
-    parts.add("device_type", input.deviceType().code());
     JsonNode body =
         send(
-            skinClient,
+            classifyClient,
             HttpMethod.POST,
-            "/infer/skin-metrics",
+            "/infer/disease",
             authHeaders(ctx.requestId()),
             parts,
             MediaType.MULTIPART_FORM_DATA);
-    return AiResponseParser.skinMetrics(body);
+    return AiResponseParser.disease(body);
   }
 
   @Override
-  public RecommendResult recommend(RecommendRequest request, AiCallContext ctx) {
+  public DiseaseRecommendResult recommend(DiseaseRecommendRequest request, AiCallContext ctx) {
     String payload = json.writeValueAsString(request);
     JsonNode body =
         send(
             recClient,
             HttpMethod.POST,
-            "/infer/recommend",
+            "/infer/disease-recommend",
             authHeaders(ctx.requestId()),
             payload,
             MediaType.APPLICATION_JSON);
-    return AiResponseParser.recommend(body);
+    return AiResponseParser.diseaseRecommend(body);
   }
 
   private Consumer<HttpHeaders> authHeaders(String requestId) {

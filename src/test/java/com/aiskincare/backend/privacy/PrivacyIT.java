@@ -82,7 +82,6 @@ class PrivacyIT extends IntegrationTestBase {
             TestImages.png(1080, 1440, marker),
             "face.png",
             TestHttp.json().writeValueAsString(Factories.defaultSurvey()),
-            "smartphone",
             null);
     assertThat(res.status()).isEqualTo(202);
     worker.tick();
@@ -143,7 +142,7 @@ class PrivacyIT extends IntegrationTestBase {
   }
 
   @Test
-  @DisplayName("TC-PRI-02: 전체 흐름의 로그에 설문 원문·토큰·비밀번호·이메일 원문이 없다")
+  @DisplayName("TC-PRI-02: 전체 흐름의 로그에 설문 원문·토큰·비밀번호·이메일 원문·분류 라벨이 없다")
   void noSecretsInLogs(CapturedOutput output) {
     long now = System.nanoTime();
     String note = "비밀메모-" + now;
@@ -214,8 +213,7 @@ class PrivacyIT extends IntegrationTestBase {
             .multipart(
                 new Multipart()
                     .file("image", "face.png", "image/png", Factories.FACE)
-                    .field("survey", TestHttp.json().writeValueAsString(survey))
-                    .field("deviceType", "smartphone"))
+                    .field("survey", TestHttp.json().writeValueAsString(survey)))
             .send();
     assertThat(submitted.status()).isEqualTo(202);
     worker.tick();
@@ -247,10 +245,13 @@ class PrivacyIT extends IntegrationTestBase {
     assertThat(logs.lines().size()).isGreaterThan(5);
     for (String secret : secrets) assertThat(logs.raw()).as("로그에 비밀값").doesNotContain(secret);
     assertThat(logs.raw()).contains("p***@example.com");
-    // TC-ANA-09 확인용: 데모 측정이면 측정값을 보내지 않았다는 사실만 로그에 남는다
+    // 분류 라벨·안내 문장은 남기지 않고 추천 상태·시간만 남긴다 (TRD §7.6)
+    assertThat(logs.raw()).doesNotContain("아토피").doesNotContain("의학적 진단");
     JsonNode done =
         logs.find("recommendation_done").orElseThrow(() -> new AssertionError(logs.raw()));
-    assertThat(done.get("metricsSent").isNull()).isTrue();
+    assertThat(done.get("recommendationStatus").asString()).isEqualTo("generated");
+    JsonNode created = logs.find("analysis_created").orElseThrow();
+    assertThat(created.get("uncertain").isBoolean()).isTrue();
     // 요청 로그 공통 필드
     JsonNode request = logs.find("request completed").orElseThrow();
     assertThat(request.get("requestId").isString()).isTrue();

@@ -7,17 +7,18 @@ import org.slf4j.event.Level;
  * TRD §12.5 — AI 결과 → 백엔드 코드.
  *
  * <pre>
- * | AI 결과                | 측정 (POST /analyses 안)    | 추천 (워커)                       |
- * | 401 E1001             | 503 E3001 + ERROR          | failed E3001 + ERROR             |
+ * | AI 결과                | 분류 (POST /analyses 안)    | 추천 (워커)                       |
+ * | 401 E1001             | 503 E3001 + ERROR          | FAILED E3001 + ERROR             |
  * | 413 E2003 / 415 E2004 | 그대로                      | —                                |
  * | 422 E2001 / E2002     | 그대로 (AI 문구 우선)         | —                                |
- * | 422 E4002             | 500 E4001 + ERROR          | failed E4001, 재시도 없음          |
- * | 503 E3003             | 그대로                      | 5초 후 1회 재시도 → failed E3003    |
- * | 504 E3002             | 그대로                      | 재시도 없이 failed E3002           |
- * | connection            | 즉시 1회 재시도 → 503 E3001   | 5초 후 1회 재시도 → failed E3001    |
- * | timeout (우리 쪽·524)   | 503 E3001                  | 재시도 없이 failed E3002           |
- * | invalid_response      | 500 E4001 + ERROR          | failed E4001 + ERROR             |
- * | 그 밖의 4xx/5xx         | 500 E4001 + ERROR          | failed E4001 + ERROR             |
+ * | 422 E4002             | 500 E4001 + ERROR          | FAILED E4001, 재시도 없음          |
+ * | 503 E3001 (분류기 꺼짐) | 그대로                      | 5초 후 1회 재시도 → FAILED E3001    |
+ * | 503 E3003             | 그대로                      | 5초 후 1회 재시도 → FAILED E3003    |
+ * | 504 E3002             | 그대로                      | 재시도 없이 FAILED E3002           |
+ * | connection            | 즉시 1회 재시도 → 503 E3001   | 5초 후 1회 재시도 → FAILED E3001    |
+ * | timeout (우리 쪽·524)   | 503 E3001                  | 재시도 없이 FAILED E3002           |
+ * | invalid_response      | 500 E4001 + ERROR          | FAILED E4001 + ERROR             |
+ * | 그 밖의 4xx/5xx         | 500 E4001 + ERROR          | FAILED E4001 + ERROR             |
  * </pre>
  *
  * 사용자 사진 문제(E2xxx)는 INFO, AI·연결 문제는 WARN, 백엔드·계약 문제는 ERROR로 남긴다.
@@ -25,17 +26,17 @@ import org.slf4j.event.Level;
 public final class AiErrorMapper {
   private AiErrorMapper() {}
 
-  public record MeasureFailure(ErrorCode code, Level logLevel, String message) {}
+  public record ClassifyFailure(ErrorCode code, Level logLevel, String message) {}
 
   public record RecommendFailure(ErrorCode code, Level logLevel) {}
 
-  private static final MeasureFailure INTERNAL =
-      new MeasureFailure(ErrorCode.E4001, Level.ERROR, null);
+  private static final ClassifyFailure INTERNAL =
+      new ClassifyFailure(ErrorCode.E4001, Level.ERROR, null);
 
-  public static MeasureFailure measure(AiError error) {
+  public static ClassifyFailure classify(AiError error) {
     switch (error.kind()) {
       case CONNECTION, TIMEOUT:
-        return new MeasureFailure(ErrorCode.E3001, Level.WARN, null);
+        return new ClassifyFailure(ErrorCode.E3001, Level.WARN, null);
       case INVALID_RESPONSE:
         return INTERNAL;
       case HTTP:
@@ -45,12 +46,12 @@ public final class AiErrorMapper {
     String code = error.code();
     return switch (status) {
       // 401을 그대로 내보내면 앱이 로그아웃시킨다
-      case 401 -> new MeasureFailure(ErrorCode.E3001, Level.ERROR, null);
-      case 413 -> new MeasureFailure(ErrorCode.E2003, Level.INFO, null);
-      case 415 -> new MeasureFailure(ErrorCode.E2004, Level.INFO, null);
+      case 401 -> new ClassifyFailure(ErrorCode.E3001, Level.ERROR, null);
+      case 413 -> new ClassifyFailure(ErrorCode.E2003, Level.INFO, null);
+      case 415 -> new ClassifyFailure(ErrorCode.E2004, Level.INFO, null);
       case 422 ->
           "E2001".equals(code) || "E2002".equals(code)
-              ? new MeasureFailure(
+              ? new ClassifyFailure(
                   ErrorCode.valueOf(code),
                   Level.INFO,
                   error.aiMessage() == null || error.aiMessage().isBlank()
@@ -58,15 +59,17 @@ public final class AiErrorMapper {
                       : error.aiMessage())
               : INTERNAL; // E4002 = 백엔드 변환 버그
       case 503 ->
-          "E3003".equals(code) ? new MeasureFailure(ErrorCode.E3003, Level.WARN, null) : INTERNAL;
+          "E3001".equals(code) || "E3003".equals(code)
+              ? new ClassifyFailure(ErrorCode.valueOf(code), Level.WARN, null)
+              : INTERNAL;
       case 504 ->
-          "E3002".equals(code) ? new MeasureFailure(ErrorCode.E3002, Level.WARN, null) : INTERNAL;
+          "E3002".equals(code) ? new ClassifyFailure(ErrorCode.E3002, Level.WARN, null) : INTERNAL;
       default -> INTERNAL;
     };
   }
 
-  /** 측정: 연결 오류만 즉시 1회 재시도 */
-  public static boolean measureRetryable(AiError error) {
+  /** 분류: 연결 오류만 즉시 1회 재시도 */
+  public static boolean classifyRetryable(AiError error) {
     return error.kind() == AiError.Kind.CONNECTION;
   }
 
@@ -83,8 +86,8 @@ public final class AiErrorMapper {
     }
     int status = error.status() == null ? 0 : error.status();
     if (status == 401) return new RecommendFailure(ErrorCode.E3001, Level.ERROR);
-    if (status == 503 && "E3003".equals(error.code())) {
-      return new RecommendFailure(ErrorCode.E3003, Level.WARN);
+    if (status == 503 && ("E3001".equals(error.code()) || "E3003".equals(error.code()))) {
+      return new RecommendFailure(ErrorCode.valueOf(error.code()), Level.WARN);
     }
     if (status == 504 && "E3002".equals(error.code())) {
       return new RecommendFailure(ErrorCode.E3002, Level.WARN);

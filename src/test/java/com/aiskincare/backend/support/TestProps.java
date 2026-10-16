@@ -11,7 +11,7 @@ public final class TestProps {
   public String aiMode = "fixture";
   public String aiBaseUrl = null;
   public String aiToken = null;
-  public int skinTimeoutMs = 10000;
+  public int classifyTimeoutMs = 10000;
   public int recTimeoutMs = 120000;
   public int healthIntervalMs = 30000;
   public String fixtureScenario = "ok";
@@ -33,7 +33,7 @@ public final class TestProps {
             aiMode,
             aiBaseUrl,
             aiToken,
-            skinTimeoutMs,
+            classifyTimeoutMs,
             recTimeoutMs,
             healthIntervalMs,
             fixtureScenario),

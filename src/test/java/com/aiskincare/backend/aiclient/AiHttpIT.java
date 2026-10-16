@@ -24,11 +24,15 @@ import tools.jackson.databind.JsonNode;
 
 /** TC-ANA-10: AI 401(내부 토큰 불일치) → 클라이언트 503 E3001 + ERROR 로그. AI_MODE=real + 로컬 가짜 AI 서버 */
 @TestPropertySource(
-    properties = {"app.ai.mode=real", "app.ai.skin-timeout-ms=2000", "app.ai.rec-timeout-ms=2000"})
+    properties = {
+      "app.ai.mode=real",
+      "app.ai.classify-timeout-ms=2000",
+      "app.ai.rec-timeout-ms=2000"
+    })
 @ExtendWith(OutputCaptureExtension.class)
 class AiHttpIT extends IntegrationTestBase {
   private static final String WRONG_TOKEN = "wrong-internal-token";
-  private static volatile int skinStatus = 401;
+  private static volatile int classifyStatus = 401;
   private static final HttpServer AI = startFakeAi();
 
   private static HttpServer startFakeAi() {
@@ -43,13 +47,13 @@ class AiHttpIT extends IntegrationTestBase {
             if (exchange.getRequestURI().getPath().equals("/health")) {
               status = 200;
               body =
-                  "{\"status\":\"ok\",\"rec_loaded\":true,\"skin_loaded\":true,\"rec_backend\":\"sllm\",\"skin_backend\":\"stub\"}";
-            } else if (skinStatus == 401) {
+                  "{\"status\":\"ok\",\"rec_loaded\":true,\"skin_loaded\":true,\"rec_backend\":\"sllm\",\"skin_backend\":\"stub\",\"disease_loaded\":true,\"disease_backend\":\"densenet\"}";
+            } else if (classifyStatus == 401) {
               status = 401;
               body =
                   "{\"success\":false,\"error\":{\"code\":\"E1001\",\"message\":\"내부 인증 토큰이 없거나 올바르지 않습니다.\",\"detail\":null}}";
             } else {
-              status = skinStatus;
+              status = classifyStatus;
               body = "<html>bad gateway</html>";
             }
             byte[] out = body.getBytes(StandardCharsets.UTF_8);
@@ -83,7 +87,7 @@ class AiHttpIT extends IntegrationTestBase {
   @Test
   @DisplayName("TC-ANA-10: 401을 그대로 내보내지 않는다 (앱이 로그아웃시키므로) + ERROR 로그, 토큰은 로그에 없음")
   void ai401(CapturedOutput output) {
-    skinStatus = 401;
+    classifyStatus = 401;
     LoggedIn me = factories.userWithToken();
     Res res = factories.submit(me);
     assertThat(res.status()).isEqualTo(503);
@@ -91,7 +95,7 @@ class AiHttpIT extends IntegrationTestBase {
 
     LogLines logs = new LogLines(output.getAll());
     JsonNode line =
-        logs.find("ai_measure_failed").orElseThrow(() -> new AssertionError(output.getAll()));
+        logs.find("ai_classify_failed").orElseThrow(() -> new AssertionError(output.getAll()));
     assertThat(line.get("level").stringValue()).isEqualTo("ERROR");
     assertThat(line.get("code").stringValue()).isEqualTo("E3001");
     assertThat(line.get("ai").toString())
@@ -103,7 +107,7 @@ class AiHttpIT extends IntegrationTestBase {
   @Test
   @DisplayName("Cloudflare HTML 502 → connection → 503 E3001, aiAvailable을 즉시 false로")
   void cloudflare502() {
-    skinStatus = 502;
+    classifyStatus = 502;
     LoggedIn me = factories.userWithToken();
     assertThat(aiHealth.isAvailable()).isTrue();
     Res res = factories.submit(me);

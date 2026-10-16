@@ -72,7 +72,7 @@ public abstract class IntegrationTestBase {
     factories = new Factories(http, jdbc);
     sleeper.reset();
     jdbc.sql(
-            "TRUNCATE users, refresh_tokens, analyses, skin_metrics, surveys, recommendations"
+            "TRUNCATE users, refresh_tokens, analyses, surveys, recommendations"
                 + " RESTART IDENTITY CASCADE")
         .update();
     aiHealth.check();

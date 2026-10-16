@@ -2,18 +2,19 @@ package com.aiskincare.backend.aiclient;
 
 import com.aiskincare.backend.aiclient.AiError.Issue;
 import com.aiskincare.backend.aiclient.AiModels.AiHealth;
+import com.aiskincare.backend.aiclient.AiModels.DiseaseRecommendResult;
+import com.aiskincare.backend.aiclient.AiModels.DiseaseResult;
 import com.aiskincare.backend.aiclient.AiModels.Ingredient;
-import com.aiskincare.backend.aiclient.AiModels.MetricRatios;
 import com.aiskincare.backend.aiclient.AiModels.RecommendResult;
 import com.aiskincare.backend.aiclient.AiModels.RoutineStep;
-import com.aiskincare.backend.aiclient.AiModels.SkinMetricsResult;
 import com.aiskincare.backend.common.enums.Concern;
-import com.aiskincare.backend.common.enums.Metric;
-import com.aiskincare.backend.common.enums.Roi;
+import com.aiskincare.backend.common.enums.DiseaseLabel;
+import com.aiskincare.backend.common.enums.RecommendationStatus;
 import com.aiskincare.backend.common.enums.RoutineTime;
 import com.aiskincare.backend.common.enums.SkinType;
 import java.util.ArrayList;
-import java.util.EnumMap;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import tools.jackson.databind.JsonNode;
@@ -25,102 +26,117 @@ import tools.jackson.databind.JsonNode;
 public final class AiResponseParser {
   private AiResponseParser() {}
 
+  /** recommendations.model_version */
   private static final int MODEL_VERSION_MAX = 40;
 
-  /** POST /infer/skin-metrics 응답. ROI 이름·0–1 범위·빈 metrics 검사 */
-  public static SkinMetricsResult skinMetrics(JsonNode body) {
+  /** analyses.disease_model_version — 시험용 분류 fixture는 47자 */
+  private static final int DISEASE_MODEL_VERSION_MAX = 80;
+
+  /**
+   * POST /infer/disease 응답. 라벨·코드가 표에 있고 짝이 맞는지, 점수가 0–1인지, 확률에 6종 키가 모두(그 밖의 키 없이) 있는지 본다. 확률 합·최고
+   * 점수 일치는 AI가 추천 요청 때 검증하므로 다시 보지 않는다.
+   */
+  public static DiseaseResult disease(JsonNode body) {
     Checker c = new Checker();
     JsonNode root = c.root(body);
 
-    List<Roi> detected = new ArrayList<>();
-    JsonNode detectedNode = c.array(root.get("roi_detected"), "roi_detected");
-    if (detectedNode != null) {
-      int i = 0;
-      for (JsonNode item : detectedNode) {
-        String path = "roi_detected[" + i++ + "]";
-        String name = c.string(item, path, null);
-        if (name == null) continue;
-        Roi roi = Roi.fromCode(name);
-        if (roi == null) c.fail(path, "unknown_roi");
-        else detected.add(roi);
-      }
-    }
-
-    Map<Roi, MetricRatios> metrics = new EnumMap<>(Roi.class);
-    JsonNode metricsNode = c.object(root.get("metrics"), "metrics");
-    if (metricsNode != null) {
-      if (metricsNode.size() == 0) c.fail("metrics", "empty");
-      for (String name : metricsNode.propertyNames()) {
-        Roi roi = Roi.fromCode(name);
-        if (roi == null) {
-          c.fail("metrics." + name, "unknown_roi");
-          continue;
-        }
-        JsonNode values = c.object(metricsNode.get(name), "metrics." + name);
-        if (values == null) continue;
-        double[] v = new double[4];
-        boolean valid = true;
-        for (Metric metric : Metric.values()) {
-          Double value =
-              c.number(
-                  values.get(metric.code()), "metrics." + name + "." + metric.code(), 0.0, 1.0);
-          if (value == null) valid = false;
-          else v[metric.ordinal()] = value;
-        }
-        if (valid) metrics.put(roi, new MetricRatios(v[0], v[1], v[2], v[3]));
-      }
-    }
+    String labelValue = c.string(root.get("label"), "label", null);
+    DiseaseLabel byLabel = labelValue == null ? null : DiseaseLabel.fromLabel(labelValue);
+    if (labelValue != null && byLabel == null) c.fail("label", "unknown_label");
+    String codeValue = c.string(root.get("label_en"), "label_en", null);
+    DiseaseLabel label = codeValue == null ? null : DiseaseLabel.fromCode(codeValue);
+    if (codeValue != null && label == null) c.fail("label_en", "unknown_label");
+    if (byLabel != null && label != null && byLabel != label) c.fail("label_en", "label_mismatch");
 
     Double confidence = c.number(root.get("confidence"), "confidence", 0.0, 1.0);
-    Boolean calibration = c.bool(root.get("calibration_applied"), "calibration_applied");
-    Boolean isStub = c.bool(root.get("is_stub"), "is_stub");
-    String modelVersion = c.string(root.get("model_version"), "model_version", MODEL_VERSION_MAX);
+    Boolean uncertain = c.bool(root.get("uncertain"), "uncertain");
+
+    Map<String, Double> probabilities = new LinkedHashMap<>();
+    JsonNode probabilitiesNode = c.object(root.get("probabilities"), "probabilities");
+    if (probabilitiesNode != null) {
+      for (DiseaseLabel each : DiseaseLabel.values()) {
+        Double value =
+            c.number(probabilitiesNode.get(each.label()), "probabilities." + each.code(), 0.0, 1.0);
+        if (value != null) probabilities.put(each.label(), value);
+      }
+      for (String name : probabilitiesNode.propertyNames()) {
+        if (DiseaseLabel.fromLabel(name) == null) c.fail("probabilities", "unknown_label");
+      }
+    }
+
+    String modelVersion =
+        c.string(root.get("model_version"), "model_version", DISEASE_MODEL_VERSION_MAX);
     Double inferenceMs = c.number(root.get("inference_ms"), "inference_ms", 0.0, null);
     c.throwIfInvalid();
-    return new SkinMetricsResult(
-        detected,
-        metrics,
+    return new DiseaseResult(
+        label,
         confidence,
-        calibration,
-        isStub,
+        uncertain,
+        Collections.unmodifiableMap(probabilities),
         modelVersion,
         (int) Math.round(inferenceMs));
   }
 
   /**
-   * POST /infer/recommend 응답 (TRD §12.4 표). 열거형·타입 위반은 invalid_response(→ failed E4001 + ERROR), 개수
-   * 위반(ingredients > 5, concerns > 2, reasoning ≠ 3)은 WARN만 남기고 저장한다.
+   * POST /infer/disease-recommend 응답 (TRD §12.4 표). generated면 recommendation 객체,
+   * 보류(uncertain·no_concern)면 null이어야 한다. 되돌려 준 disease는 쓰지 않는다 — 저장한 분류가 기준.
    */
-  public static RecommendResult recommend(JsonNode body) {
+  public static DiseaseRecommendResult diseaseRecommend(JsonNode body) {
     Checker c = new Checker();
     JsonNode root = c.root(body);
+
+    String statusValue = c.string(root.get("recommendation_status"), "recommendation_status", null);
+    RecommendationStatus status =
+        statusValue == null ? null : RecommendationStatus.fromCode(statusValue);
+    if (statusValue != null && status == null) c.fail("recommendation_status", "unknown_status");
+
+    JsonNode recommendationNode = root.get("recommendation");
+    RecommendResult recommendation = null;
+    if (status == RecommendationStatus.GENERATED) {
+      JsonNode item = c.object(recommendationNode, "recommendation");
+      if (item != null) recommendation = recommendation(c, item, "recommendation.");
+    } else if (status != null && recommendationNode != null && !recommendationNode.isNull()) {
+      c.fail("recommendation", "not_null");
+    }
+
+    List<String> guidance = c.stringArray(root.get("guidance"), "guidance");
+    c.throwIfInvalid();
+    return new DiseaseRecommendResult(status, recommendation, List.copyOf(guidance));
+  }
+
+  /**
+   * 추천 객체. 열거형·타입 위반은 invalid_response(→ FAILED E4001 + ERROR), 개수 위반(ingredients > 5, concerns >
+   * 2, reasoning ≠ 3)은 WARN만 남기고 저장한다. 위반이 있으면 null — 호출한 쪽이 곧 throwIfInvalid로 던진다.
+   */
+  private static RecommendResult recommendation(Checker c, JsonNode root, String p) {
+    int before = c.issueCount();
     List<String> warnings = new ArrayList<>();
 
     SkinType skinType = null;
-    String skinTypeValue = c.string(root.get("skin_type"), "skin_type", null);
+    String skinTypeValue = c.string(root.get("skin_type"), p + "skin_type", null);
     if (skinTypeValue != null) {
       skinType = SkinType.fromLabel(skinTypeValue);
       if (skinType == null) skinType = SkinType.fromCode(skinTypeValue); // 영문 코드도 인식
-      if (skinType == null) c.fail("skin_type", "unknown_skin_type");
+      if (skinType == null) c.fail(p + "skin_type", "unknown_skin_type");
     }
 
     List<Concern> concerns = new ArrayList<>();
-    List<String> concernLabels = c.stringArray(root.get("concerns"), "concerns");
+    List<String> concernLabels = c.stringArray(root.get("concerns"), p + "concerns");
     if (concernLabels != null) {
       for (int i = 0; i < concernLabels.size(); i++) {
         Concern concern = Concern.fromLabel(concernLabels.get(i));
-        if (concern == null) c.fail("concerns[" + i + "]", "unknown_concern");
+        if (concern == null) c.fail(p + "concerns[" + i + "]", "unknown_concern");
         else if (!concerns.contains(concern)) concerns.add(concern); // 중복 고민은 하나로
       }
       if (concernLabels.size() > 2) warnings.add("concerns_count:" + concernLabels.size());
     }
 
     List<Ingredient> ingredients = new ArrayList<>();
-    JsonNode ingredientsNode = c.array(root.get("ingredients"), "ingredients");
+    JsonNode ingredientsNode = c.array(root.get("ingredients"), p + "ingredients");
     if (ingredientsNode != null) {
       int i = 0;
       for (JsonNode raw : ingredientsNode) {
-        String path = "ingredients[" + i++ + "]";
+        String path = p + "ingredients[" + i++ + "]";
         JsonNode item = c.object(raw, path);
         if (item == null) continue;
         String name = c.string(item.get("name"), path + ".name", null);
@@ -139,11 +155,11 @@ public final class AiResponseParser {
     }
 
     List<RoutineStep> routine = new ArrayList<>();
-    JsonNode routineNode = c.array(root.get("routine"), "routine");
+    JsonNode routineNode = c.array(root.get("routine"), p + "routine");
     if (routineNode != null) {
       int i = 0;
       for (JsonNode raw : routineNode) {
-        String path = "routine[" + i++ + "]";
+        String path = p + "routine[" + i++ + "]";
         JsonNode item = c.object(raw, path);
         if (item == null) continue;
         Integer step = c.integer(item.get("step"), path + ".step");
@@ -157,22 +173,23 @@ public final class AiResponseParser {
       }
     }
 
-    List<String> reasoning = c.stringArray(root.get("reasoning"), "reasoning");
+    List<String> reasoning = c.stringArray(root.get("reasoning"), p + "reasoning");
     if (reasoning != null && reasoning.size() != 3) {
       warnings.add("reasoning_count:" + reasoning.size());
     }
-    String answer = c.string(root.get("answer"), "answer", null);
-    String disclaimer = c.string(root.get("disclaimer"), "disclaimer", null);
-    Boolean filtered = c.bool(root.get("filtered"), "filtered");
-    Boolean usedFallback = c.bool(root.get("used_fallback"), "used_fallback");
+    String answer = c.string(root.get("answer"), p + "answer", null);
+    String disclaimer = c.string(root.get("disclaimer"), p + "disclaimer", null);
+    Boolean filtered = c.bool(root.get("filtered"), p + "filtered");
+    Boolean usedFallback = c.bool(root.get("used_fallback"), p + "used_fallback");
     JsonNode notesNode = root.get("input_notes");
     List<String> inputNotes =
         notesNode == null || notesNode.isNull()
             ? List.of()
-            : c.stringArray(notesNode, "input_notes");
-    String modelVersion = c.string(root.get("model_version"), "model_version", MODEL_VERSION_MAX);
-    Double inferenceMs = c.number(root.get("inference_ms"), "inference_ms", 0.0, null);
-    c.throwIfInvalid();
+            : c.stringArray(notesNode, p + "input_notes");
+    String modelVersion =
+        c.string(root.get("model_version"), p + "model_version", MODEL_VERSION_MAX);
+    Double inferenceMs = c.number(root.get("inference_ms"), p + "inference_ms", 0.0, null);
+    if (c.issueCount() > before) return null;
 
     return new RecommendResult(
         skinType,
@@ -190,14 +207,15 @@ public final class AiResponseParser {
         List.copyOf(warnings));
   }
 
-  /** GET /health */
+  /** GET /health — disease_loaded가 없으면(분류 API가 없는 이전 AI 서버) false */
   public static AiHealth health(JsonNode body) {
     Checker c = new Checker();
     JsonNode root = c.root(body);
     String status = c.string(root.get("status"), "status", null);
     c.throwIfInvalid();
-    JsonNode skin = root.get("skin_backend");
-    return new AiHealth(status, skin != null && skin.isString() ? skin.stringValue() : null);
+    JsonNode diseaseLoaded = root.get("disease_loaded");
+    return new AiHealth(
+        status, diseaseLoaded != null && diseaseLoaded.isBoolean() && diseaseLoaded.booleanValue());
   }
 
   /** 필드마다 확인하며 위반을 모은다 */
@@ -208,6 +226,10 @@ public final class AiResponseParser {
       if (body != null && body.isObject()) return body;
       issues.add(new Issue("$", "not_object"));
       throw AiError.invalid(issues);
+    }
+
+    int issueCount() {
+      return issues.size();
     }
 
     void fail(String path, String reason) {

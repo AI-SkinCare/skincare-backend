@@ -425,7 +425,7 @@ class AuthIT extends IntegrationTestBase {
     @DisplayName("GET /users/me")
     void me() {
       LoggedIn me = factories.userWithToken();
-      SeedData.insertDoneAnalyses(jdbc, TestHttp.json(), me.user().id(), 2, Instant.now());
+      SeedData.insertCompletedAnalyses(jdbc, TestHttp.json(), me.user().id(), 2, Instant.now());
       Res res = http.get("/api/v1/users/me").bearer(me.accessToken()).send();
       assertThat(res.status()).isEqualTo(200);
       assertThat(res.data().get("id").longValue()).isEqualTo(me.user().id());
@@ -437,21 +437,15 @@ class AuthIT extends IntegrationTestBase {
     }
 
     @Test
-    @DisplayName("TC-AUTH-07: 분석 3건 계정 탈퇴 → 6개 테이블 모두 0건, 남은 토큰은 401 E1001")
+    @DisplayName("TC-AUTH-07: 분석 3건 계정 탈퇴 → 5개 테이블 모두 0건, 남은 토큰은 401 E1001")
     void withdraw() {
       LoggedIn me = factories.userWithToken();
-      SeedData.insertDoneAnalyses(jdbc, TestHttp.json(), me.user().id(), 3, Instant.now());
+      SeedData.insertCompletedAnalyses(jdbc, TestHttp.json(), me.user().id(), 3, Instant.now());
       Res res = http.delete("/api/v1/users/me").bearer(me.accessToken()).send();
       assertThat(res.status()).isEqualTo(204);
       assertThat(res.header("Set-Cookie")).contains("Max-Age=0");
       for (String table :
-          List.of(
-              "users",
-              "refresh_tokens",
-              "analyses",
-              "skin_metrics",
-              "surveys",
-              "recommendations")) {
+          List.of("users", "refresh_tokens", "analyses", "surveys", "recommendations")) {
         assertThat(count(table)).as(table).isZero();
       }
       Res after = http.get("/api/v1/users/me").bearer(me.accessToken()).send();

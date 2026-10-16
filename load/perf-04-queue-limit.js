@@ -22,9 +22,9 @@ export function setup() {
 export default function ({ tokens }) {
   const first = submit(tokens[0], SLOW);
   check(first, { '1번째 202': (r) => r.status === 202 });
-  // 첫 건이 recommending으로 넘어가야 "처리 1 + 대기 10"이 성립한다
+  // 첫 건이 GENERATING으로 넘어가야 "처리 1 + 대기 10"이 성립한다
   const id = first.json('data.analysisId');
-  for (let i = 0; i < 30 && getAnalysis(tokens[0], id).json('data.status') !== 'recommending'; i++)
+  for (let i = 0; i < 30 && getAnalysis(tokens[0], id).json('data.status') !== 'GENERATING'; i++)
     sleep(1);
 
   const statuses = tokens.slice(1).map((token) => {

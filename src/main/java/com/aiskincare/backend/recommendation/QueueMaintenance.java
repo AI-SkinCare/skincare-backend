@@ -23,14 +23,14 @@ public class QueueMaintenance {
     this.props = props;
   }
 
-  /** 기동 시 recommending → queued (queued_at 유지로 순서 보존) */
+  /** 기동 시 GENERATING → QUEUED (queued_at 유지로 순서 보존) */
   public int recoverInterrupted() {
     int count = queue.recoverInterrupted();
     if (count > 0) log.atWarn().addKeyValue("count", count).log("queue_recovered");
     return count;
   }
 
-  /** queued가 REC_QUEUE_MAX_WAIT_MIN분을 넘으면 failed E3001 */
+  /** QUEUED가 REC_QUEUE_MAX_WAIT_MIN분을 넘으면 FAILED E3001 */
   public int expireStale() {
     try {
       List<String> ids = queue.expireStale(props.queue().maxWaitMin());

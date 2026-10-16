@@ -24,11 +24,13 @@ import tools.jackson.databind.json.JsonMapper;
  * SMOKE_BASE_URL=https://app.&lt;도메인&gt;/api/v1 ./gradlew smoke
  * </pre>
  *
- * 기본은 임시 계정을 가입시켜 쓰고 끝나면 탈퇴까지 한다 (시드 계정 불필요). 13개 엔드포인트와 주요 오류 경로를 본다.
+ * 기본은 임시 계정을 가입시켜 쓰고 끝나면 탈퇴까지 한다 (시드 계정 불필요). 12개 엔드포인트와 주요 오류 경로를 본다. 분석은 분류 → 추천 완료(COMPLETED) 또는
+ * 보류(WITHHELD)까지 확인한다 — 어느 쪽이 될지는 분류 결과에 달려 있다.
  *
  * <p>환경변수: SMOKE_BASE_URL(기본 http://localhost:3000/api/v1), SMOKE_EMAIL(기존 계정 — 가입·탈퇴 생략),
- * SMOKE_PASSWORD(기본 SEED_PASSWORD), SMOKE_IMAGE(JPEG/PNG 경로, 없으면 합성 PNG — stub 측정에서만 통과),
- * SMOKE_TIMEOUT_SEC(추천 완료까지 최대 초, 기본 300), SMOKE_SCENARIO(X-Fixture-Scenario, fixture 개발 서버에서만).
+ * SMOKE_PASSWORD(기본 SEED_PASSWORD), SMOKE_IMAGE(JPEG/PNG 경로, 없으면 합성 PNG — 분류기는 얼굴이 아니어도 분류하므로 흐름
+ * 확인은 되지만 결과는 의미 없음), SMOKE_TIMEOUT_SEC(추천 완료까지 최대 초, 기본 300), SMOKE_SCENARIO(X-Fixture-Scenario,
+ * fixture 개발 서버에서만).
  *
  * <p>모두 통과하면 0, 하나라도 기대와 다르면 1로 끝난다. 토큰·설문 원문은 출력하지 않는다.
  */
@@ -193,10 +195,7 @@ public final class SmokeFlow {
   }
 
   private static Multipart imageForm(Image image, Object survey) {
-    return new Multipart()
-        .file("image", image)
-        .field("deviceType", "smartphone")
-        .field("survey", JSON.writeValueAsString(survey));
+    return new Multipart().file("image", image).field("survey", JSON.writeValueAsString(survey));
   }
 
   private static Image loadImage() throws IOException {
@@ -360,6 +359,18 @@ public final class SmokeFlow {
                 created.status() == 202 ? created.data() : created.body().path("error")));
     if (created.status() != 202) return;
     String id = created.data().path("analysisId").asString();
+    JsonNode disease = created.data().path("disease");
+    check(
+        disease.path("labelEn").isString() && disease.path("probabilities").size() == 6,
+        "  분류 결과 (6종 점수)",
+        "labelEn="
+            + disease.path("labelEn").asString()
+            + " 점수="
+            + disease.path("confidence")
+            + " uncertain="
+            + disease.path("uncertain")
+            + " model="
+            + disease.path("modelVersion").asString());
     expectError(
         call("POST", "/analyses", accessToken, null, imageForm(image, SURVEY)),
         429,
@@ -384,31 +395,27 @@ public final class SmokeFlow {
             "  … " + Math.round((System.currentTimeMillis() - startedAt) / 1000.0) + "s " + state);
       }
       last = state;
-      if ("done".equals(st) || "failed".equals(st)) break;
+      if (List.of("COMPLETED", "WITHHELD", "FAILED").contains(st)) break;
       Thread.sleep(3000);
     }
-    JsonNode measurement = detail == null ? null : detail.path("measurement");
+    String finalStatus = detail == null ? "" : detail.path("status").asString();
     JsonNode recommendation = detail == null ? null : detail.path("recommendation");
     check(
-        detail != null && "done".equals(detail.path("status").asString()),
-        "GET /analyses/{id} → done ("
+        "COMPLETED".equals(finalStatus) || "WITHHELD".equals(finalStatus),
+        "GET /analyses/{id} → "
+            + finalStatus
+            + " "
+            + (detail == null ? "" : detail.path("recommendationStatus").asString(""))
+            + " ("
             + Math.round((System.currentTimeMillis() - startedAt) / 1000.0)
             + "s)",
         detail == null ? "" : String.valueOf(detail.path("error")));
-    check(
-        measurement != null
-            && measurement.path("overallScore").isInt()
-            && measurement.path("summary").size() == 4,
-        "  측정 결과 (summary 4개)",
-        measurement == null
-            ? ""
-            : "isDemo="
-                + measurement.path("isDemo")
-                + " overall="
-                + measurement.path("overallScore")
-                + " model="
-                + measurement.path("modelVersion").asString());
-    if (recommendation != null && "done".equals(recommendation.path("status").asString())) {
+    if ("WITHHELD".equals(finalStatus)) {
+      check(
+          recommendation.isNull() && detail.path("guidance").size() > 0,
+          "  보류: 추천 null + 안내 " + detail.path("guidance").size() + "개");
+    }
+    if ("COMPLETED".equals(finalStatus)) {
       boolean all =
           List.of(
                   "skinType",
@@ -418,7 +425,8 @@ public final class SmokeFlow {
                   "reasoning",
                   "answer",
                   "disclaimer",
-                  "inputNotes")
+                  "inputNotes",
+                  "inferenceMs")
               .stream()
               .allMatch(recommendation::has);
       check(
@@ -438,24 +446,18 @@ public final class SmokeFlow {
     }
     expectError(call("GET", "/analyses/NOT-A-ULID", accessToken), 404, "E4003", "형식이 틀린 분석 id");
 
-    // 7–9. 이력·추이·재요청
+    // 7–8. 이력·재요청
     Res list = call("GET", "/analyses?page=1&size=1", accessToken);
     check(
         list.status() == 200
             && id.equals(list.data().path("items").path(0).path("analysisId").asString()),
         "GET /analyses?size=1 → 최신 1건");
     expectError(call("GET", "/analyses?size=51", accessToken), 422, "E4002", "size=51");
-    Res trend = call("GET", "/analyses/" + id + "/trend", accessToken);
-    check(
-        trend.status() == 200 && trend.data().has("current"),
-        "GET /analyses/{id}/trend → 200",
-        "previous="
-            + (trend.data() != null && trend.data().path("previous").isObject() ? "있음" : "null"));
     expectError(
         call("POST", "/analyses/" + id + "/recommendation/retry", accessToken),
         409,
         "E4005",
-        "done 분석 추천 재요청");
+        "완료·보류 분석 추천 재요청");
 
     // 10. 토큰 재발급·재사용 감지·로그아웃
     if (refreshToken1 != null) {

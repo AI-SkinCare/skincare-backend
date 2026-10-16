@@ -5,6 +5,8 @@ import com.fasterxml.jackson.annotation.JsonValue;
 /** AI_MODE=fixture 시나리오 (TRD §12.7) */
 public enum FixtureScenario implements CodedEnum {
   OK("ok"),
+  UNCERTAIN("uncertain"),
+  NO_CONCERN("no-concern"),
   NO_FACE("no-face"),
   REC_TIMEOUT("rec-timeout"),
   REC_SLOW("rec-slow"),

@@ -43,9 +43,10 @@ class SystemIT extends IntegrationTestBase {
     LoggedIn me = factories.userWithToken();
     jdbc.sql(
             """
-            INSERT INTO analyses (id, user_id, status, device_type, is_demo, confidence, overall_score,
-                                  skin_model_version, measure_ms)
-            VALUES ('01J9Z3K5V8Q2M4N6P8R0S2T4V6', :u, 'queued', 'smartphone', true, 0, 50, 'x', 1)
+            INSERT INTO analyses (id, user_id, status, disease_label, disease_confidence,
+                                  disease_uncertain, disease_probabilities, disease_model_version,
+                                  disease_inference_ms, classify_ms)
+            VALUES ('01J9Z3K5V8Q2M4N6P8R0S2T4V6', :u, 'QUEUED', 'normal', 0.9, false, '{}', 'x', 0, 1)
             """)
         .param("u", me.user().id())
         .update();

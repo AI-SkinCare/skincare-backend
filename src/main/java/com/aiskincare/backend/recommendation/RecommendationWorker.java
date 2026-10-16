@@ -4,8 +4,8 @@ import com.aiskincare.backend.aiclient.AiClient;
 import com.aiskincare.backend.aiclient.AiError;
 import com.aiskincare.backend.aiclient.AiErrorMapper;
 import com.aiskincare.backend.aiclient.AiModels.AiCallContext;
-import com.aiskincare.backend.aiclient.AiModels.RecommendRequest;
-import com.aiskincare.backend.aiclient.AiModels.RecommendResult;
+import com.aiskincare.backend.aiclient.AiModels.DiseaseRecommendRequest;
+import com.aiskincare.backend.aiclient.AiModels.DiseaseRecommendResult;
 import com.aiskincare.backend.aiclient.AiTransform;
 import com.aiskincare.backend.aiclient.FixtureScenarioStore;
 import com.aiskincare.backend.analyses.AnalysisRepository;
@@ -13,7 +13,6 @@ import com.aiskincare.backend.common.error.ErrorCode;
 import com.aiskincare.backend.common.util.Sleeper;
 import com.aiskincare.backend.config.Constants;
 import com.aiskincare.backend.system.AiHealthService;
-import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
@@ -22,8 +21,9 @@ import org.slf4j.MDC;
 import org.springframework.stereotype.Component;
 
 /**
- * 추천 작업 워커 (TRD §13.2). 동시성 1 — GPU 생성이 직렬이다. APP_ENV=test에서는 자동 시작하지 않고 테스트가 {@link #tick()}을 직접
- * 부른다.
+ * 추천 작업 워커 (TRD §13.2). 동시성 1 — GPU 생성이 직렬이다. 저장한 분류 + 설문으로 /infer/disease-recommend를 불러 generated면
+ * COMPLETED, uncertain·no_concern이면 WITHHELD로 저장한다(보류 판단은 AI). APP_ENV=test에서는 자동 시작하지 않고 테스트가
+ * {@link #tick()}을 직접 부른다.
  */
 @Component
 public class RecommendationWorker {
@@ -31,7 +31,7 @@ public class RecommendationWorker {
 
   private sealed interface Outcome permits Success, Failure {}
 
-  private record Success(RecommendResult result, long ms) implements Outcome {}
+  private record Success(DiseaseRecommendResult result, long ms) implements Outcome {}
 
   private record Failure(AiError error, long ms) implements Outcome {}
 
@@ -84,7 +84,7 @@ public class RecommendationWorker {
       var survey = analyses.survey(analysisId);
       if (analysis.isEmpty() || survey.isEmpty()) {
         // 같은 트랜잭션으로 저장하므로 정상이라면 둘 중 하나만 없을 수 없다. 방금 삭제됐으면 0행이라 아무 일도 없고,
-        // 데이터가 어긋났으면 recommending에 멈추지 않게 failed로 끝낸다
+        // 데이터가 어긋났으면 GENERATING에 멈추지 않게 FAILED로 끝낸다
         if (analysis.isPresent() && queue.markFailed(analysisId, ErrorCode.E4001, null)) {
           log.error("recommendation_survey_missing");
         } else {
@@ -93,32 +93,32 @@ public class RecommendationWorker {
         return;
       }
 
-      // is_demo=true면 metrics: null (FR-MEA-04)
-      RecommendRequest request =
-          AiTransform.buildRecommendRequest(
-              analysis.get().isDemo()
-                  ? null
-                  : AiTransform.metricsFromRows(analyses.metrics(analysisId)),
-              survey.get());
-      // TC-ANA-09를 원문 없이 확인할 수 있게 측정값 전송 여부(ROI 목록 또는 null)만 남긴다
-      List<String> metricsSent =
-          request.metrics() == null ? null : List.copyOf(request.metrics().keySet());
+      // 저장한 분류를 그대로 다시 보낸다 — 재시도도 분류를 다시 하지 않는다 (개정 B.2)
+      DiseaseRecommendRequest request =
+          AiTransform.buildRecommendRequest(analysis.get().disease(), survey.get());
       Outcome outcome =
           callWithPolicy(
               analysisId, request, new AiCallContext(requestId, scenarios.get(analysisId)));
 
       switch (outcome) {
         case Success success -> {
-          if (!success.result().warnings().isEmpty()) {
+          var result = success.result();
+          if (result.recommendation() != null && !result.recommendation().warnings().isEmpty()) {
             log.atWarn()
-                .addKeyValue("warnings", success.result().warnings())
+                .addKeyValue("warnings", result.recommendation().warnings())
                 .log("ai_recommend_count_warning");
           }
-          boolean saved = queue.markDone(analysisId, success.ms(), success.result());
+          boolean saved = queue.markDone(analysisId, success.ms(), result);
+          String event =
+              !saved
+                  ? "recommendation_discarded"
+                  : result.recommendation() != null
+                      ? "recommendation_done"
+                      : "recommendation_withheld";
           log.atInfo()
+              .addKeyValue("recommendationStatus", result.status().code())
               .addKeyValue("recommendMs", success.ms())
-              .addKeyValue("metricsSent", metricsSent)
-              .log(saved ? "recommendation_done" : "recommendation_discarded");
+              .log(event);
         }
         case Failure failure -> {
           var mapped = AiErrorMapper.recommend(failure.error());
@@ -126,7 +126,6 @@ public class RecommendationWorker {
               .addKeyValue("code", mapped.code().name())
               .addKeyValue("ai", failure.error().toLog())
               .addKeyValue("recommendMs", failure.ms())
-              .addKeyValue("metricsSent", metricsSent)
               .log("recommendation_failed");
           if (!queue.markFailed(analysisId, mapped.code(), failure.ms())) {
             log.info("recommendation_discarded");
@@ -151,11 +150,12 @@ public class RecommendationWorker {
    * TRD §12.5 워커 열: 연결 오류·503만 5초 후 1회 재시도(attempt_count + 1). 504·422·우리 쪽 타임아웃은 재시도하지 않는다 — AI는
    * 타임아웃 뒤에도 GPU를 붙잡고 생성을 계속한다. recommend_ms는 마지막 호출의 왕복 시간.
    */
-  private Outcome callWithPolicy(String analysisId, RecommendRequest request, AiCallContext ctx) {
+  private Outcome callWithPolicy(
+      String analysisId, DiseaseRecommendRequest request, AiCallContext ctx) {
     for (int attempt = 1; ; attempt++) {
       long started = System.nanoTime();
       try {
-        RecommendResult result = ai.recommend(request, ctx);
+        DiseaseRecommendResult result = ai.recommend(request, ctx);
         return new Success(result, (System.nanoTime() - started) / 1_000_000);
       } catch (AiError error) {
         long ms = (System.nanoTime() - started) / 1_000_000;

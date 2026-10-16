@@ -96,41 +96,24 @@ public final class Factories {
     return survey;
   }
 
-  /** POST /analyses (multipart). surveyJson이 null이면 survey 필드를 빼고, deviceType이 null이면 빼고 */
+  /** POST /analyses (multipart). surveyJson이 null이면 survey 필드를 뺀다 */
   public Res submit(
-      LoggedIn who,
-      byte[] image,
-      String filename,
-      String surveyJson,
-      String deviceType,
-      String scenario) {
+      LoggedIn who, byte[] image, String filename, String surveyJson, String scenario) {
     Multipart form = new Multipart();
     if (image != null) form.file("image", filename, "image/png", image);
     if (surveyJson != null) form.field("survey", surveyJson);
-    if (deviceType != null) form.field("deviceType", deviceType);
     var req = http.post("/api/v1/analyses").bearer(who.accessToken()).multipart(form);
     if (scenario != null) req.header("X-Fixture-Scenario", scenario);
     return req.send();
   }
 
   public Res submit(LoggedIn who) {
-    return submit(
-        who,
-        FACE,
-        "face.png",
-        TestHttp.json().writeValueAsString(defaultSurvey()),
-        "smartphone",
-        null);
+    return submit(who, (String) null);
   }
 
   public Res submit(LoggedIn who, String scenario) {
     return submit(
-        who,
-        FACE,
-        "face.png",
-        TestHttp.json().writeValueAsString(defaultSurvey()),
-        "smartphone",
-        scenario);
+        who, FACE, "face.png", TestHttp.json().writeValueAsString(defaultSurvey()), scenario);
   }
 
   public String submitOk(LoggedIn who, String scenario) {

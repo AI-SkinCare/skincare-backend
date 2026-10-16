@@ -27,7 +27,7 @@ public record AppProperties(
       String mode,
       String baseUrl,
       String internalToken,
-      int skinTimeoutMs,
+      int classifyTimeoutMs,
       int recTimeoutMs,
       int healthIntervalMs,
       String fixtureScenario) {}
@@ -58,11 +58,13 @@ public record AppProperties(
       if ("real".equals(ai.mode()) && (isBlank(ai.baseUrl()) || isBlank(ai.internalToken()))) {
         problems.add("AI_MODE=real이면 AI_BASE_URL과 AI_INTERNAL_TOKEN이 필요합니다");
       }
-      if (ai.skinTimeoutMs() <= 0 || ai.recTimeoutMs() <= 0 || ai.healthIntervalMs() < 1000) {
-        problems.add("AI_SKIN_TIMEOUT_MS·AI_REC_TIMEOUT_MS > 0, AI_HEALTH_INTERVAL_MS ≥ 1000");
+      if (ai.classifyTimeoutMs() <= 0 || ai.recTimeoutMs() <= 0 || ai.healthIntervalMs() < 1000) {
+        problems.add("AI_CLASSIFY_TIMEOUT_MS·AI_REC_TIMEOUT_MS > 0, AI_HEALTH_INTERVAL_MS ≥ 1000");
       }
       if (FixtureScenario.fromCode(ai.fixtureScenario()) == null) {
-        problems.add("AI_FIXTURE_SCENARIO: ok | no-face | rec-timeout | rec-slow | ai-down");
+        problems.add(
+            "AI_FIXTURE_SCENARIO: ok | uncertain | no-concern | no-face | rec-timeout | rec-slow"
+                + " | ai-down");
       }
     }
     if (queue == null || queue.workerConcurrency() != 1) {
@@ -83,7 +85,7 @@ public record AppProperties(
               ai.mode(),
               ai.baseUrl().replaceAll("/+$", ""),
               ai.internalToken(),
-              ai.skinTimeoutMs(),
+              ai.classifyTimeoutMs(),
               ai.recTimeoutMs(),
               ai.healthIntervalMs(),
               ai.fixtureScenario());

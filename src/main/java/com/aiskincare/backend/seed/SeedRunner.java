@@ -68,7 +68,7 @@ public class SeedRunner implements ApplicationRunner {
                     .query(Long.class)
                     .single());
           }
-          SeedData.insertDoneAnalyses(jdbc, json, ids.get(0), TEST01_ANALYSES, Instant.now());
+          SeedData.insertCompletedAnalyses(jdbc, json, ids.get(0), TEST01_ANALYSES, Instant.now());
         });
     log.atInfo()
         .addKeyValue("accounts", ACCOUNT_COUNT)

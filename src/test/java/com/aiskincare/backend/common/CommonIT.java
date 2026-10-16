@@ -103,8 +103,8 @@ class CommonIT extends IntegrationTestBase {
             "/api/v1/analyses",
             "/api/v1/analyses/{id}",
             "/api/v1/analyses/{id}/recommendation/retry",
-            "/api/v1/analyses/{id}/trend",
             "/api/v1/system/status");
+    assertThat(paths).doesNotContain("/api/v1/analyses/{id}/trend");
     JsonNode schemas = doc.get("components").get("schemas");
     assertThat(schemas.has("ErrorEnvelope")).isTrue();
     assertThat(schemas.has("AuthUser")).as("@CurrentUser 매개변수가 API에 노출됨").isFalse();
@@ -113,22 +113,22 @@ class CommonIT extends IntegrationTestBase {
     assertThat(token.path("required").toString()).doesNotContain("refreshToken");
 
     // nullable 참조는 { type: object, nullable: true, allOf: [$ref] } — 3.0에서 $ref 옆 nullable은 무시되므로
-    JsonNode previous = schemas.get("AnalysisTrend").get("properties").get("previous");
-    assertThat(previous.get("type").stringValue()).isEqualTo("object");
-    assertThat(previous.get("nullable").booleanValue()).isTrue();
-    assertThat(previous.get("allOf").get(0).get("$ref").stringValue())
-        .isEqualTo("#/components/schemas/TrendPoint");
-    assertThat(
-            schemas
-                .get("AnalysisDetail")
-                .get("properties")
-                .get("error")
-                .get("nullable")
-                .booleanValue())
-        .isTrue();
-    assertThat(
-            schemas.get("AnalysisCreated").get("properties").get("status").get("enum").toString())
-        .isEqualTo("[\"queued\"]");
+    JsonNode view = schemas.get("AnalysisView").get("properties");
+    JsonNode recommendation = view.get("recommendation");
+    assertThat(recommendation.get("type").stringValue()).isEqualTo("object");
+    assertThat(recommendation.get("nullable").booleanValue()).isTrue();
+    assertThat(recommendation.get("allOf").get(0).get("$ref").stringValue())
+        .isEqualTo("#/components/schemas/Recommendation");
+    assertThat(view.get("error").get("nullable").booleanValue()).isTrue();
+    assertThat(view.get("recommendationStatus").get("nullable").booleanValue()).isTrue();
+    assertThat(view.get("recommendationStatus").get("enum").toString())
+        .isEqualTo("[\"generated\",\"uncertain\",\"no_concern\"]");
+    // 개정 B.1: 작업 상태는 대문자 5종
+    assertThat(view.get("status").get("enum").toString())
+        .isEqualTo("[\"QUEUED\",\"GENERATING\",\"COMPLETED\",\"WITHHELD\",\"FAILED\"]");
+    assertThat(view.has("measurement")).isFalse();
+    assertThat(schemas.get("Disease").get("properties").get("labelEn").get("enum").toString())
+        .isEqualTo("[\"psoriasis\",\"atopic\",\"acne\",\"normal\",\"rosacea\",\"seborrheic\"]");
 
     JsonNode ops = doc.get("paths");
     assertThat(ops.get("/api/v1/auth/login").get("post").get("security").toString())
@@ -145,7 +145,7 @@ class CommonIT extends IntegrationTestBase {
           .doesNotContain("AuthUser")
           .doesNotContain("\"user\"");
     }
-    // 제출은 multipart 본문 (survey·deviceType이 쿼리로 새지 않는다)
+    // 제출은 multipart 본문 (survey가 쿼리로 새지 않는다, deviceType은 없어짐)
     JsonNode submit = ops.get("/api/v1/analyses").get("post");
     assertThat(submit.path("parameters").toString())
         .doesNotContain("survey")
@@ -158,7 +158,8 @@ class CommonIT extends IntegrationTestBase {
         .isEqualTo("binary");
     List<String> required = new ArrayList<>();
     formSchema.get("required").forEach(n -> required.add(n.stringValue()));
-    assertThat(required).containsExactlyInAnyOrder("image", "survey", "deviceType");
+    assertThat(required).containsExactlyInAnyOrder("image", "survey");
+    assertThat(formSchema.get("properties").has("deviceType")).isFalse();
     assertThat(paths).doesNotContain("/error");
     // 상태 코드
     assertThat(ops.get("/api/v1/auth/signup").get("post").get("responses").has("201")).isTrue();
