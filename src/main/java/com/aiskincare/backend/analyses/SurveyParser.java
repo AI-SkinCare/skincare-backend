@@ -118,10 +118,39 @@ public final class SurveyParser {
       }
     }
 
+    List<String> avoidIngredients = new ArrayList<>();
+    JsonNode avoid = root.get("avoidIngredients");
+    if (present(avoid)) {
+      if (!avoid.isArray()) errors.add(issue("avoidIngredients", "invalid_type"));
+      else if (avoid.size() > 30) errors.add(issue("avoidIngredients", "too_many"));
+      else
+        for (JsonNode item : avoid) {
+          if (!item.isString()) {
+            errors.add(issue("avoidIngredients", "invalid_type"));
+            break;
+          }
+          String name = item.stringValue().strip();
+          if (name.isEmpty() || name.length() > 100) {
+            errors.add(issue("avoidIngredients", "invalid_length"));
+            break;
+          }
+          if (!avoidIngredients.contains(name)) avoidIngredients.add(name);
+        }
+    }
     if (!errors.isEmpty()) return new Result(null, errors);
     return new Result(
         new NormalizedSurvey(
-            gender, ageBand, skinType, sleepHours, water, sun, stress, concerns, products, note),
+            gender,
+            ageBand,
+            skinType,
+            sleepHours,
+            water,
+            sun,
+            stress,
+            concerns,
+            products,
+            note,
+            avoidIngredients),
         List.of());
   }
 

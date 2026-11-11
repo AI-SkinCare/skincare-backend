@@ -90,7 +90,8 @@ public final class AnalysisPresenter {
         queued ? queue.estimatedWaitSec() : null,
         TimeUtil.toIsoUtc(analysis.createdAt()),
         TimeUtil.toIsoUtc(analysis.completedAt()),
-        survey);
+        survey,
+        finished(analysis) ? analysis.generation() : null);
   }
 
   public static ListItem listItem(ListRow row) {

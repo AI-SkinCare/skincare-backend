@@ -93,6 +93,7 @@ public final class Factories {
     survey.put("concerns", List.of("pore", "pigmentation"));
     survey.put("currentProducts", List.of("토너", "수분크림"));
     survey.put("note", "여름에 번들거림이 심해요");
+    survey.put("avoidIngredients", List.of());
     return survey;
   }
 

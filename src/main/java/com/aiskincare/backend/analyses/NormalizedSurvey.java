@@ -19,10 +19,37 @@ public record NormalizedSurvey(
     @Schema(nullable = true) Level stressLevel,
     List<Concern> concerns,
     List<String> currentProducts,
-    @Schema(nullable = true, maxLength = 300) String note) {
+    @Schema(nullable = true, maxLength = 300) String note,
+    @Schema(description = "피할 성분. 최대 30개, 각 1–100자") List<String> avoidIngredients) {
+
+  public NormalizedSurvey(
+      Gender gender,
+      AgeBand ageBand,
+      SkinType skinType,
+      Integer sleepHours,
+      Level waterIntakeLevel,
+      Level sunExposureLevel,
+      Level stressLevel,
+      List<Concern> concerns,
+      List<String> currentProducts,
+      String note) {
+    this(
+        gender,
+        ageBand,
+        skinType,
+        sleepHours,
+        waterIntakeLevel,
+        sunExposureLevel,
+        stressLevel,
+        concerns,
+        currentProducts,
+        note,
+        List.of());
+  }
 
   public NormalizedSurvey {
     concerns = concerns == null ? List.of() : List.copyOf(concerns);
     currentProducts = currentProducts == null ? List.of() : List.copyOf(currentProducts);
+    avoidIngredients = avoidIngredients == null ? List.of() : List.copyOf(avoidIngredients);
   }
 }

@@ -1,5 +1,7 @@
 # iOS 앱 연동 가이드
 
+**2026-11-12 추가:** 품질 보류(`quality_rejected`)와 생성 출처(`generation.origin`, `not_generated` 포함), 회피 성분 설문을 지원합니다. [추가 계약](ai-generation-contract.md)을 함께 적용합니다. `not_generated`는 추천 상태 enum 값이 아닙니다.
+
 백엔드 API를 Swift 앱에서 쓸 때 지켜야 할 것만 모았습니다. 계약의 기준은 Swagger(`/api/docs-json`)이고, 근거는 [TRD](TRD.md)와 개정 수행계획서(2026-10-15) 부록 B, 팀 문서 SC-03입니다.
 
 > **10/16 분석 API가 바뀌었습니다 (호환 깨짐).** 피부 지표 측정(`measurement`)·추이(`/trend`)·`deviceType`이 없어지고, 이미지 분류(`disease`)와 추천 상태(`status`·`recommendationStatus`·`guidance`)로 바뀌었습니다. 인증·오류 봉투는 그대로입니다. 바뀐 곳: §4·§5·§6·§7·§8.
@@ -106,7 +108,7 @@
 | `QUEUED` | 추천 생성 대기 | 분류 참고 결과 + 대기 안내("대기 2번째 · 약 2분" — `queuePosition`·`estimatedWaitSec`) | 계속 |
 | `GENERATING` | 추천 생성 중 (약 45초) | 진행 표시, 다시 제출 막기 (`queuePosition`·`estimatedWaitSec`는 `null`) | 계속 |
 | `COMPLETED` | 추천 완료 (`recommendationStatus: "generated"`) | 추천(성분·관리 단계·요약) + `guidance` | 끝 |
-| `WITHHELD` | 추천 보류 (`recommendationStatus: "uncertain"` 또는 `"no_concern"`, `recommendation: null`) | 추천 없이 사유와 다음 행동 + `guidance`. `uncertain` → 재촬영·전문의 상담 안내, `no_concern` → 설문에서 고민을 골라 다시 분석 | 끝 |
+| `WITHHELD` | 추천 보류 (`uncertain`, `no_concern`, `quality_rejected`; `recommendation: null`) | `guidance`를 표시. 품질 보류를 분류 불확실로 표시하지 않음. 실패·재시도 대상 아님 | 끝 |
 | `FAILED` | 통신·생성·저장 실패 | `error.message` + 재요청 버튼 → `POST /analyses/{id}/recommendation/retry`(202, 저장된 분류로 추천만 다시) | 끝 |
 
 - 폴링 간격: **처음 3분은 3초, 이후 10초**. 150초가 지나면 "생각보다 오래 걸리고 있어요" 같은 지연 안내, **최대 30분** 조회 후 중단하고 이력에서 다시 보게 합니다. 한 번의 요청을 오래 붙잡지 않습니다(각 GET은 바로 끝남).

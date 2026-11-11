@@ -9,7 +9,8 @@ import com.fasterxml.jackson.annotation.JsonValue;
 public enum RecommendationStatus implements CodedEnum {
   GENERATED("generated"),
   UNCERTAIN("uncertain"),
-  NO_CONCERN("no_concern");
+  NO_CONCERN("no_concern"),
+  QUALITY_REJECTED("quality_rejected");
 
   private final String code;
 

@@ -22,6 +22,7 @@
 
 | 날짜 | 내용 |
 |---|---|
+| 2026-11-12 | 사용자 요청: `quality_rejected` 보류, `generation` 출처·품질 정보, 성분 purpose 출처, `avoidIngredients` 설문, 모델 버전 160자. 상세 계약은 [ai-generation-contract.md](ai-generation-contract.md). V3는 기존 행을 보존한다. |
 | 2026-10-10 | 최초 작성 |
 | 2026-10-10 | [앱 협의] §9 네이티브 앱 리프레시 토큰 본문 전달(`X-Client: ios`) 추가 — SC-03 반영 필요 |
 | 2026-10-10 | §12.7·부록 B: fixture를 `skincare-ai/docs/fixtures/` 실제 출력으로 교체 |
@@ -388,8 +389,9 @@ CREATE TABLE analyses (
   disease_inference_ms  INTEGER      NOT NULL,     -- AI 내부 분류 시간
   classify_ms           INTEGER      NOT NULL,     -- 분류 API 왕복
   recommendation_status VARCHAR(16)                -- AI 값. COMPLETED·WITHHELD일 때만
-                        CHECK (recommendation_status IN ('generated','uncertain','no_concern')),
+                        CHECK (recommendation_status IN ('generated','uncertain','no_concern','quality_rejected')),
   guidance              JSONB        NOT NULL DEFAULT '[]',  -- AI 안내 문장 배열
+  generation            JSONB        NOT NULL DEFAULT '{}',  -- 생성 출처·품질 정보 (V3)
   queued_at             TIMESTAMPTZ  NOT NULL DEFAULT now(),  -- 재요청 시 갱신
   rec_started_at        TIMESTAMPTZ,               -- 워커 획득 시각
   completed_at          TIMESTAMPTZ,               -- COMPLETED·WITHHELD·FAILED 확정 시각
@@ -423,7 +425,7 @@ CREATE TABLE recommendations (
   input_notes   JSONB       NOT NULL DEFAULT '[]',
   filtered      BOOLEAN     NOT NULL,
   used_fallback BOOLEAN     NOT NULL,
-  model_version VARCHAR(40) NOT NULL,
+  model_version VARCHAR(160) NOT NULL,
   inference_ms  INTEGER     NOT NULL,  -- AI 서버 내부 생성 시간
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -654,6 +656,7 @@ survey
 | waterIntakeLevel, sunExposureLevel, stressLevel | - | `low` \| `medium` \| `high` |
 | concerns | - | 고민 코드 배열(부록 A.4), 최대 3개, 중복 불가. 정상 분류일 때 추천 대상이 된다 — 없으면 정상 분류는 `no_concern` 보류 [개정 1.3] |
 | currentProducts | - | 문자열 배열, 최대 5개, 각 1–30자 |
+| avoidIngredients | - | 피할 성분명 배열, 최대 30개, 각 1–100자. 양끝 공백 제거, 중복 제거 후 AI에 전달 |
 | note | - | 300자 이하 |
 
 앱(Swift)이 지켜야 할 업로드 규칙 — 정도희에게 전달 [구현 결정] (앱 연동 규칙 전체는 [ios-integration.md](ios-integration.md)):
@@ -837,7 +840,7 @@ RETURNING id;
 | QUEUED | 접수 후 생성 대기 | `null` | `null` | `[]` | 순번 ≥ 1 / 예상 초 (§13.8) | `null` | 분류 참고 결과와 대기 안내 |
 | GENERATING | AI 추천 호출 중 | `null` | `null` | `[]` | `null` / `null` [구현 결정] | `null` | 진행 표시, 중복 접수 방지 |
 | COMPLETED | 추천 생성 완료 | `generated` | 객체 | AI 안내 | `null` / `null` | `null` | 추천과 공통 안내 표시 |
-| WITHHELD | 추천 보류 | `uncertain` · `no_concern` | `null` | AI 안내(보류 사유 포함) | `null` / `null` | `null` | 추천 없이 사유와 다음 행동 |
+| WITHHELD | 추천 보류 | `uncertain` · `no_concern` · `quality_rejected` | `null` | AI 안내(보류 사유 포함) | `null` / `null` | `null` | 추천 없이 사유와 다음 행동, 폴링 종료 |
 | FAILED | 통신·생성·저장 실패 | `null` | `null` | `[]` | `null` / `null` | `{ code, message }` (E3001·E3002·E3003·E4001, message는 §7.3) | 오류 안내와 재요청(§10.3) |
 
 - **보류는 오류가 아니다.** 보류를 FAILED로 바꾸거나 빈 추천 객체로 대체하지 않는다 [개정 B.1].
@@ -848,6 +851,7 @@ RETURNING id;
 | generated | 추천 생성 | 성분·관리 단계·요약과 안내문 |
 | uncertain | 분류가 불확실해 자동 추천 보류 | 판단 보류와 재촬영·상담 안내 |
 | no_concern | 정상 분류이고 선택한 지원 고민이 없어 추천 생략 | 자동 추천할 고민 없음, 설문에서 고민 선택 안내 |
+| quality_rejected | 회피 조건에 맞는 근거 없음 또는 생성 품질 미달 | AI guidance 표시, 실패·분류 불확실과 구별. 회피 조건을 삭제하도록 유도하지 않음 |
 
 ### 11.2 보류 판단은 AI가 한다
 
@@ -1543,7 +1547,7 @@ docker-compose.yml
 | 구간 | 초기 설정 (개정 B.2) | 이 레포의 값 |
 |---|---|---|
 | Spring → 이미지 분류 | 읽기 제한 20초 | `AI_CLASSIFY_TIMEOUT_MS=20000` |
-| FastAPI 추천 생성 | 120초 (생성 슬롯 획득 후) | AI 서버 설정 |
+| FastAPI 추천 생성 | 120초 (대기 및 실행을 합친 제한) | AI 서버 설정 |
 | Spring → 추천 호출 | 130초 이상, 앱 요청과 분리한 작업자 | `AI_REC_TIMEOUT_MS=130000`, 워커 |
 | Spring 작업자 | 생성 동시 1건, 대기 최대 10건 | `REC_WORKER_CONCURRENCY=1`, `REC_QUEUE_LIMIT=10` |
 | Swift 상태 조회 | 처음 3분 3초, 이후 10초 간격 | 앱 |

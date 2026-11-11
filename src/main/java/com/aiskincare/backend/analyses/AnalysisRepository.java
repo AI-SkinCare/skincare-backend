@@ -1,6 +1,7 @@
 package com.aiskincare.backend.analyses;
 
 import com.aiskincare.backend.aiclient.AiModels.DiseaseResult;
+import com.aiskincare.backend.aiclient.AiModels.Generation;
 import com.aiskincare.backend.aiclient.AiModels.Ingredient;
 import com.aiskincare.backend.aiclient.AiModels.RoutineStep;
 import com.aiskincare.backend.analyses.AnalysisRows.AnalysisRow;
@@ -44,6 +45,7 @@ public class AnalysisRepository {
           "classify_ms",
           "recommendation_status",
           "guidance",
+          "generation",
           "queued_at",
           "completed_at",
           "attempt_count",
@@ -247,7 +249,8 @@ public class AnalysisRepository {
         instant(rs, "completed_at"),
         rs.getInt("attempt_count"),
         rs.getString("error_code"),
-        instant(rs, "created_at"));
+        instant(rs, "created_at"),
+        json.readValue(rs.getString("generation"), Generation.class));
   }
 
   /** JSONB는 키 순서를 보존하지 않는다 → 부록 A.2(DiseaseLabel) 순서로 다시 놓는다 */

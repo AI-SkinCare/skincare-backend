@@ -38,7 +38,22 @@ public final class AiModels {
    */
   public record DiseaseRecommendRequest(Map<String, Object> disease, Map<String, Object> survey) {}
 
-  public record Ingredient(String name, String purpose, int priority) {}
+  public record Ingredient(
+      String name, String purpose, int priority, String purposeSource, String purposeStatus) {
+    public Ingredient(String name, String purpose, int priority) {
+      this(name, purpose, priority, null, null);
+    }
+  }
+
+  /** AI provenance; missing legacy fields remain unknown, never inferred as model success. */
+  public record Generation(
+      String origin, String qualityStatus, String evidenceStatus, List<String> qualityIssues) {
+    public static final Generation UNKNOWN = new Generation(null, null, null, List.of());
+
+    public Generation {
+      qualityIssues = qualityIssues == null ? List.of() : List.copyOf(qualityIssues);
+    }
+  }
 
   public record RoutineStep(int step, RoutineTime time, String action) {}
 
@@ -62,5 +77,13 @@ public final class AiModels {
    * /infer/disease-recommend 결과. recommendation은 generated일 때만 있고 보류(uncertain·no_concern)면 null
    */
   public record DiseaseRecommendResult(
-      RecommendationStatus status, RecommendResult recommendation, List<String> guidance) {}
+      RecommendationStatus status,
+      RecommendResult recommendation,
+      List<String> guidance,
+      Generation generation) {
+    public DiseaseRecommendResult(
+        RecommendationStatus status, RecommendResult recommendation, List<String> guidance) {
+      this(status, recommendation, guidance, Generation.UNKNOWN);
+    }
+  }
 }
