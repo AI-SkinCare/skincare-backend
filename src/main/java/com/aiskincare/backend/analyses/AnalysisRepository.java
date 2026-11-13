@@ -1,6 +1,7 @@
 package com.aiskincare.backend.analyses;
 
 import com.aiskincare.backend.aiclient.AiModels.DiseaseResult;
+import com.aiskincare.backend.aiclient.AiModels.Explanation;
 import com.aiskincare.backend.aiclient.AiModels.Generation;
 import com.aiskincare.backend.aiclient.AiModels.Ingredient;
 import com.aiskincare.backend.aiclient.AiModels.RoutineStep;
@@ -42,6 +43,7 @@ public class AnalysisRepository {
           "disease_probabilities",
           "disease_model_version",
           "disease_inference_ms",
+          "disease_explanation",
           "classify_ms",
           "recommendation_status",
           "guidance",
@@ -68,9 +70,9 @@ public class AnalysisRepository {
             """
             INSERT INTO analyses (id, user_id, status, disease_label, disease_confidence,
                                   disease_uncertain, disease_probabilities, disease_model_version,
-                                  disease_inference_ms, classify_ms)
+                                  disease_inference_ms, classify_ms, disease_explanation)
             VALUES (:id, :userId, 'QUEUED', :label, :confidence, :uncertain,
-                    CAST(:probabilities AS jsonb), :model, :inferenceMs, :classifyMs)
+                    CAST(:probabilities AS jsonb), :model, :inferenceMs, :classifyMs, CAST(:explanation AS jsonb))
             """)
         .param("id", id)
         .param("userId", userId)
@@ -81,6 +83,9 @@ public class AnalysisRepository {
         .param("model", disease.modelVersion())
         .param("inferenceMs", disease.inferenceMs())
         .param("classifyMs", classifyMs)
+        .param(
+            "explanation",
+            disease.explanation() == null ? null : json.writeValueAsString(disease.explanation()))
         .update();
   }
 
@@ -164,7 +169,13 @@ public class AnalysisRepository {
   public record ListRow(AnalysisRow analysis, List<Concern> concerns) {}
 
   public List<ListRow> list(long userId, int page, int size) {
-    String columns = String.join(", ", ANALYSIS_COLUMNS.stream().map(c -> "a." + c).toList());
+    String columns =
+        String.join(
+            ", ",
+            ANALYSIS_COLUMNS.stream()
+                .map(
+                    c -> c.equals("disease_explanation") ? "NULL AS disease_explanation" : "a." + c)
+                .toList());
     return jdbc.sql(
             "SELECT "
                 + columns
@@ -241,7 +252,8 @@ public class AnalysisRepository {
             rs.getBoolean("disease_uncertain"),
             probabilities(rs.getString("disease_probabilities")),
             rs.getString("disease_model_version"),
-            rs.getInt("disease_inference_ms")),
+            rs.getInt("disease_inference_ms"),
+            explanation(rs.getString("disease_explanation"))),
         rs.getInt("classify_ms"),
         RecommendationStatus.fromCode(rs.getString("recommendation_status")),
         strings(rs.getString("guidance")),
@@ -251,6 +263,10 @@ public class AnalysisRepository {
         rs.getString("error_code"),
         instant(rs, "created_at"),
         json.readValue(rs.getString("generation"), Generation.class));
+  }
+
+  private Explanation explanation(String value) {
+    return value == null ? null : json.readValue(value, Explanation.class);
   }
 
   /** JSONB는 키 순서를 보존하지 않는다 → 부록 A.2(DiseaseLabel) 순서로 다시 놓는다 */

@@ -23,6 +23,7 @@
 | 날짜 | 내용 |
 |---|---|
 | 2026-11-12 | 사용자 요청: `quality_rejected` 보류, `generation` 출처·품질 정보, 성분 purpose 출처, `avoidIngredients` 설문, 모델 버전 160자. 상세 계약은 [ai-generation-contract.md](ai-generation-contract.md). V3는 기존 행을 보존한다. |
+| 2026-11-13 | 사용자 요청: 선택형 Grad-CAM 참고 영역. 분류 호출에 `include_explanation=true`, 접수·상세 `disease.explanation`, nullable JSONB V4. 이력은 히트맵 제외. 상세 검증·호환 계약은 [gradcam-contract.md](gradcam-contract.md). |
 | 2026-10-10 | 최초 작성 |
 | 2026-10-10 | [앱 협의] §9 네이티브 앱 리프레시 토큰 본문 전달(`X-Client: ios`) 추가 — SC-03 반영 필요 |
 | 2026-10-10 | §12.7·부록 B: fixture를 `skincare-ai/docs/fixtures/` 실제 출력으로 교체 |

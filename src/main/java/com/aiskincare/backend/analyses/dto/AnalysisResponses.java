@@ -1,5 +1,6 @@
 package com.aiskincare.backend.analyses.dto;
 
+import com.aiskincare.backend.aiclient.AiModels.Explanation;
 import com.aiskincare.backend.aiclient.AiModels.Generation;
 import com.aiskincare.backend.aiclient.AiModels.Ingredient;
 import com.aiskincare.backend.aiclient.AiModels.RoutineStep;
@@ -29,7 +30,9 @@ public final class AnalysisResponses {
       @Schema(description = "6종 라벨(한글) → 0–1, 건선·아토피·여드름·정상·주사·지루 순서")
           Map<String, Double> probabilities,
       @Schema(example = "densenet121_s2_3ea9506") String modelVersion,
-      @Schema(example = "45") int inferenceMs) {}
+      @Schema(example = "45") int inferenceMs,
+      @Schema(description = "선택형 모델 참고 영역. 병변 위치·중증도 정답이 아니며 원본 얼굴을 포함하지 않음")
+          Explanation explanation) {}
 
   public record CodeLabel<T>(
       T code, @Schema(description = "AI 라벨. 화면 표기는 앱이 code로 매핑") String label) {}

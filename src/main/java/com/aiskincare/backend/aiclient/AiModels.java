@@ -30,7 +30,27 @@ public final class AiModels {
       boolean uncertain,
       Map<String, Double> probabilities,
       String modelVersion,
-      int inferenceMs) {}
+      int inferenceMs,
+      Explanation explanation) {
+    public DiseaseResult(
+        DiseaseLabel label,
+        double confidence,
+        boolean uncertain,
+        Map<String, Double> probabilities,
+        String modelVersion,
+        int inferenceMs) {
+      this(label, confidence, uncertain, probabilities, modelVersion, inferenceMs, null);
+    }
+  }
+
+  public record Explanation(
+      boolean available,
+      String method,
+      String targetLabel,
+      String modelVersion,
+      String heatmapPngBase64,
+      String interpretation,
+      String unavailableReason) {}
 
   /**
    * POST /infer/disease-recommend 요청 (TRD §12.4). disease는 저장한 분류 JSON(snake_case), survey는 AI

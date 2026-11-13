@@ -74,7 +74,8 @@ public final class AiResponseParser {
         uncertain,
         Collections.unmodifiableMap(probabilities),
         modelVersion,
-        (int) Math.round(inferenceMs));
+        (int) Math.round(inferenceMs),
+        ExplanationParser.parse(root.get("explanation"), label, modelVersion));
   }
 
   /**

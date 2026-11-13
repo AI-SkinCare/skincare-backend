@@ -73,7 +73,7 @@ public class HttpAiClient implements AiClient {
     return send(healthClient, HttpMethod.GET, "/model-info", authHeaders(null), null, null);
   }
 
-  /** multipart image 하나 (TRD §12.3). Content-Type은 시그니처로 판별한 값 */
+  /** multipart image와 선택형 설명 요청 (TRD §12.3, gradcam-contract). Content-Type은 시그니처로 판별한 값 */
   @Override
   public DiseaseResult classify(ClassifyInput input, AiCallContext ctx) {
     String filename = "image/png".equals(input.mimeType()) ? "image.png" : "image.jpg";
@@ -81,6 +81,7 @@ public class HttpAiClient implements AiClient {
     fileHeaders.setContentType(MediaType.parseMediaType(input.mimeType()));
     fileHeaders.setContentDispositionFormData("image", filename);
     MultiValueMap<String, Object> parts = new LinkedMultiValueMap<>();
+    parts.add("include_explanation", "true");
     parts.add(
         "image",
         new HttpEntity<>(
