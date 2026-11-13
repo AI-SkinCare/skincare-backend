@@ -68,7 +68,7 @@ public class RecommendationQueueRepository {
                   jdbc.sql(
                           """
                           UPDATE analyses SET status = :status, recommendation_status = :recStatus,
-                                 guidance = CAST(:guidance AS jsonb), completed_at = now(),
+                                 guidance = CAST(:guidance AS jsonb), generation = CAST(:generation AS jsonb), completed_at = now(),
                                  recommend_ms = :ms
                           WHERE id = :id AND status = 'GENERATING'
                           """)
@@ -78,6 +78,7 @@ public class RecommendationQueueRepository {
                           (r == null ? AnalysisStatus.WITHHELD : AnalysisStatus.COMPLETED).code())
                       .param("recStatus", result.status().code())
                       .param("guidance", json.writeValueAsString(result.guidance()))
+                      .param("generation", json.writeValueAsString(result.generation()))
                       .param("ms", recommendMs)
                       .update();
               if (updated == 0) return false;
@@ -141,7 +142,7 @@ public class RecommendationQueueRepository {
                 UPDATE analyses
                 SET status = 'QUEUED', queued_at = now(), error_code = NULL, completed_at = NULL,
                     rec_started_at = NULL, queue_wait_ms = NULL, recommend_ms = NULL,
-                    recommendation_status = NULL, guidance = '[]'
+                    recommendation_status = NULL, guidance = '[]', generation = '{}'
                 WHERE id = :id AND user_id = :userId AND status = 'FAILED'
                 """)
             .param("id", analysisId)

@@ -208,7 +208,8 @@ class AnalysisPresenterTest {
             "estimatedWaitSec",
             "createdAt",
             "completedAt",
-            "survey");
+            "survey",
+            "generation");
     assertThat(node.get("status").asString()).isEqualTo("WITHHELD");
     assertThat(node.get("recommendationStatus").asString()).isEqualTo("no_concern");
     assertThat(node.get("recommendation").isNull()).isTrue();

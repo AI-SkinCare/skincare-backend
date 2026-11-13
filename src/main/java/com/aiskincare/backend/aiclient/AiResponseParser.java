@@ -27,7 +27,7 @@ public final class AiResponseParser {
   private AiResponseParser() {}
 
   /** recommendations.model_version */
-  private static final int MODEL_VERSION_MAX = 40;
+  private static final int MODEL_VERSION_MAX = 160;
 
   /** analyses.disease_model_version — 시험용 분류 fixture는 47자 */
   private static final int DISEASE_MODEL_VERSION_MAX = 80;
@@ -74,7 +74,8 @@ public final class AiResponseParser {
         uncertain,
         Collections.unmodifiableMap(probabilities),
         modelVersion,
-        (int) Math.round(inferenceMs));
+        (int) Math.round(inferenceMs),
+        ExplanationParser.parse(root.get("explanation"), label, modelVersion));
   }
 
   /**
@@ -100,8 +101,35 @@ public final class AiResponseParser {
     }
 
     List<String> guidance = c.stringArray(root.get("guidance"), "guidance");
+    JsonNode generationNode =
+        recommendationNode != null && recommendationNode.isObject() ? recommendationNode : root;
+    String origin = c.optionalString(generationNode.get("generation_origin"), "generation_origin");
+    String topOrigin = c.optionalString(root.get("generation_origin"), "generation_origin");
+    if (origin == null) origin = topOrigin;
+    if (origin != null
+        && !List.of("model", "source_cards", "rule_fallback", "not_generated").contains(origin)) {
+      c.fail("generation_origin", "unknown_origin");
+    }
+    if (topOrigin != null && !topOrigin.equals(origin))
+      c.fail("generation_origin", "origin_mismatch");
+    String quality = c.optionalString(generationNode.get("quality_status"), "quality_status");
+    String evidence = c.optionalString(generationNode.get("evidence_status"), "evidence_status");
+    List<String> qualityIssues =
+        generationNode.hasNonNull("quality_issues")
+            ? c.stringArray(generationNode.get("quality_issues"), "quality_issues")
+            : List.of();
+    if (status == RecommendationStatus.GENERATED
+        && ("not_generated".equals(origin)
+            || "withheld".equals(quality)
+            || "withheld".equals(evidence))) {
+      c.fail("recommendation", "generation_withheld");
+    }
     c.throwIfInvalid();
-    return new DiseaseRecommendResult(status, recommendation, List.copyOf(guidance));
+    return new DiseaseRecommendResult(
+        status,
+        recommendation,
+        List.copyOf(guidance),
+        new AiModels.Generation(origin, quality, evidence, qualityIssues));
   }
 
   /**
@@ -148,7 +176,13 @@ public final class AiResponseParser {
         boolean purposeOk = purposeNode == null || purposeNode.isNull() || purpose != null;
         Integer priority = c.integer(item.get("priority"), path + ".priority");
         if (name != null && purposeOk && priority != null) {
-          ingredients.add(new Ingredient(name, purpose, priority));
+          ingredients.add(
+              new Ingredient(
+                  name,
+                  purpose,
+                  priority,
+                  c.optionalString(item.get("purpose_source"), path + ".purpose_source"),
+                  c.optionalString(item.get("purpose_status"), path + ".purpose_status")));
         }
       }
       if (ingredients.size() > 5) warnings.add("ingredients_count:" + ingredients.size());
@@ -259,6 +293,10 @@ public final class AiResponseParser {
         return null;
       }
       return value;
+    }
+
+    String optionalString(JsonNode node, String path) {
+      return node == null || node.isNull() ? null : string(node, path, 160);
     }
 
     Boolean bool(JsonNode node, String path) {

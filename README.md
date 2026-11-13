@@ -2,6 +2,8 @@
 
 # skincare-backend
 
+Grad-CAM 선택 응답·저장·앱 전달 계약: [docs/gradcam-contract.md](docs/gradcam-contract.md).
+
 피부 사진과 설문을 받아 이미지 분류 결과를 참고 정보로 보여 주고, 그 결과를 바탕으로 스킨케어 성분·관리법을 추천하는 서비스의 백엔드 저장소입니다.
 
 ## 역할

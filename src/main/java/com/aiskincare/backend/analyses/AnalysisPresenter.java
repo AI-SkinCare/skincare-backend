@@ -28,6 +28,10 @@ public final class AnalysisPresenter {
   }
 
   public static Disease disease(DiseaseResult disease) {
+    return disease(disease, true);
+  }
+
+  private static Disease disease(DiseaseResult disease, boolean includeExplanation) {
     return new Disease(
         disease.label().label(),
         disease.label(),
@@ -35,7 +39,8 @@ public final class AnalysisPresenter {
         disease.uncertain(),
         disease.probabilities(),
         disease.modelVersion(),
-        disease.inferenceMs());
+        disease.inferenceMs(),
+        includeExplanation ? disease.explanation() : null);
   }
 
   private static boolean finished(AnalysisRow analysis) {
@@ -90,7 +95,8 @@ public final class AnalysisPresenter {
         queued ? queue.estimatedWaitSec() : null,
         TimeUtil.toIsoUtc(analysis.createdAt()),
         TimeUtil.toIsoUtc(analysis.completedAt()),
-        survey);
+        survey,
+        finished(analysis) ? analysis.generation() : null);
   }
 
   public static ListItem listItem(ListRow row) {
@@ -100,7 +106,7 @@ public final class AnalysisPresenter {
         TimeUtil.toIsoUtc(analysis.createdAt()),
         analysis.status(),
         recommendationStatus(analysis),
-        disease(analysis.disease()),
+        disease(analysis.disease(), false),
         row.concerns());
   }
 }

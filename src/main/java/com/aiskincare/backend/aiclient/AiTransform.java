@@ -29,6 +29,8 @@ public final class AiTransform {
     }
     if (survey.stressLevel() != null) out.put("stressLevel", survey.stressLevel().code());
     if (!survey.currentProducts().isEmpty()) out.put("currentProducts", survey.currentProducts());
+    if (!survey.avoidIngredients().isEmpty())
+      out.put("avoidIngredients", survey.avoidIngredients());
     out.put("selfReportedConcerns", survey.concerns().stream().map(Concern::label).toList());
     if (survey.note() != null && !survey.note().isEmpty()) out.put("note", survey.note());
     return out;
