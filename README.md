@@ -38,7 +38,7 @@ Java 21이 필요합니다 (macOS: `export JAVA_HOME=$(/usr/libexec/java_home -v
 docker compose up -d db          # 로컬 PostgreSQL
 cp .env.example .env             # AI_MODE=fixture가 기본 (AI 서버 없이 개발)
 ./gradlew seed                   # test01~40@skincare.dev, test01에 완료 분석 25건
-./gradlew bootRun                # http://localhost:3000/api/docs (기동 시 마이그레이션 자동 적용)
+./gradlew bootRun                # http://localhost:8080/api/docs (기동 시 마이그레이션 자동 적용)
 ```
 
 | 명령 | 내용 |
@@ -55,7 +55,7 @@ cp .env.example .env             # AI_MODE=fixture가 기본 (AI 서버 없이 �
 
 부하 테스트(k6)는 [load/README.md](load/README.md), iOS 앱 연동 규칙은 [docs/ios-integration.md](docs/ios-integration.md)를 본다.
 
-- API: `http://localhost:3000/api/v1`, Swagger JSON: `/api/docs-json` (앱 타입 생성용)
+- API: `http://localhost:8080/api/v1`, Swagger JSON: `/api/docs-json` (앱 타입 생성용)
 - iOS 시뮬레이터는 `localhost`, 실기기는 같은 Wi-Fi에서 Mac의 LAN IP로 접속 (모든 인터페이스에서 listen)
 - AI 서버 대신 고정 응답: `AI_MODE=fixture`, 요청마다 `X-Fixture-Scenario: ok | uncertain | no-concern | no-face | rec-timeout | rec-slow | ai-down` (production에선 무시). 응답은 skincare-ai의 기록(`src/main/resources/fixtures/ai/disease-pipeline/`)
 

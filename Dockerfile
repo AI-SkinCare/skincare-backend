@@ -15,9 +15,9 @@ WORKDIR /app
 RUN addgroup -S app && adduser -S app -G app
 COPY --from=build --chown=app:app /app/app.jar ./app.jar
 USER app
-EXPOSE 3000
+EXPOSE 8080
 # DB까지 확인하는 경로 (DB 장애면 500)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-  CMD wget -qO- http://127.0.0.1:3000/api/v1/system/status > /dev/null || exit 1
+  CMD wget -qO- http://127.0.0.1:8080/api/v1/system/status > /dev/null || exit 1
 # 마이그레이션은 앱 기동 시 Flyway가 먼저 적용한다 (실패하면 기동하지 않음)
 ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-jar", "app.jar"]

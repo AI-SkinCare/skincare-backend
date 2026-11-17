@@ -2,7 +2,7 @@
 // → 12번째부터 503 E3003, 서버 정상.
 // X-Fixture-Scenario 헤더를 쓰므로 production이 아닌 서버(AI_MODE=fixture)에서만 의미가 있다.
 //
-//   k6 run -e BASE_URL=http://localhost:3000/api/v1 -e SEED_PASSWORD=... load/perf-04-queue-limit.js
+//   k6 run -e BASE_URL=http://localhost:8080/api/v1 -e SEED_PASSWORD=... load/perf-04-queue-limit.js
 import { check, sleep } from 'k6';
 import { getAnalysis, issueTokens, submit } from './lib/common.js';
 

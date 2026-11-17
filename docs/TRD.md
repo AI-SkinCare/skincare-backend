@@ -92,7 +92,7 @@ iOS 앱(Swift, 정도희), nginx 설정 세부(정도희), AI 추론·분류 임
 ┌──────────── 정도희 자택 서버 · Docker Compose ────────────┐
 │ cloudflared (app.<도메인> → web:80)                        │
 │   → web: nginx 1.27 (/api → backend 프록시, 업로드 12MB 제한)     │
-│       → backend: Spring Boot :3000 (외부 비공개)           │
+│       → backend: Spring Boot :8080 (외부 비공개)           │
 │           ├─ db: PostgreSQL 16 (볼륨 pgdata, 외부 비공개)   │
 │           └─ HTTPS + X-Internal-Token ─────────────┐       │
 └────────────────────────────────────────────────────│───────┘
@@ -226,7 +226,7 @@ skincare-backend/
 | 변수 | 예 | 설명 |
 |---|---|---|
 | `APP_ENV` | development \| test \| production | [구현 결정] production에서만 fixture 헤더 무시, 시드 금지, 쿠키 항상 Secure. Docker 이미지 기본값 production |
-| `PORT` | 3000 | |
+| `PORT` | 8080 | |
 | `DATABASE_URL` | `postgres://skincare:***@db:5432/skincare` | 앱이 JDBC URL로 바꾼다 |
 | `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | 48바이트 난수 | 서로 다른 값, **32자 이상** (기동 시 검증) |
 | `CORS_ORIGIN` | `https://app.<도메인>` | 비우면 CORS 끔. iOS 앱은 CORS와 무관(웹에서 부를 때만 의미) |
@@ -258,7 +258,7 @@ skincare-backend/
 
 ### 7.1 경로
 
-- 전역 prefix `api/v1` → 로컬 `http://localhost:3000/api/v1`, 운영 `https://app.<도메인>/api/v1`.
+- 전역 prefix `api/v1` → 로컬 `http://localhost:8080/api/v1`, 운영 `https://app.<도메인>/api/v1`.
 - Swagger: `/api/docs`, JSON `/api/docs-json` (prefix 밖). 구현 후에는 Swagger가 실제 동작 기준이며, SC-03과 다르면 둘 중 하나를 고치는 PR을 올린다.
 - 경로는 소문자 복수형 kebab-case.
 
@@ -1226,7 +1226,7 @@ SELECT COUNT(*) FROM analyses WHERE status = 'QUEUED';  -- ≥ REC_QUEUE_LIMIT �
 | NFR-PRI-03 | 만 14세·동의 | 4개 동의 필수, 시각 기록 | TC-AUTH-01·02 |
 | NFR-SEC-05 | 비밀값 | `.env` gitignore, `.env.example` 가짜 값, GitHub secret scanning | TC-SEC-03 (gitleaks) |
 | NFR-DAT-01 | 학습 데이터 | AI허브 데이터·가공물·가중치·어댑터·실제 얼굴 사진을 레포에 넣지 않음(개정 3.3). 테스트 이미지는 합성 | TC-DAT-01 |
-| NFR-SEC-01 | HTTPS | Cloudflare Tunnel이 처리. 백엔드는 HTTP :3000, 외부 비공개 | — |
+| NFR-SEC-01 | HTTPS | Cloudflare Tunnel이 처리. 백엔드는 HTTP :8080, 외부 비공개 | — |
 
 ### 15.2 클라이언트 IP
 
@@ -1348,7 +1348,7 @@ jobs:
 ```
 docker-compose.yml
 ├─ web          nginx:1.27-alpine (/api 프록시, 업로드 12MB 제한 — 앱만 쓰므로 정적 파일 서빙 없음)
-├─ backend      eclipse-temurin:21-jre-alpine (Spring Boot, 포트 3000 — 외부 비공개)
+├─ backend      eclipse-temurin:21-jre-alpine (Spring Boot, 포트 8080 — 외부 비공개)
 ├─ db           postgres:16-alpine (볼륨 pgdata, 외부 비공개)
 └─ cloudflared  (app.<도메인> → web:80)
 ```
@@ -1370,8 +1370,8 @@ docker-compose.yml
 ### 17.3 로컬에서 iOS 앱과 연동 [구현 결정]
 
 - 백엔드(Tomcat)는 기본으로 모든 인터페이스(`0.0.0.0`)에서 받는다 — 실기기에서 Mac의 LAN IP로 붙을 수 있다.
-- iOS 시뮬레이터: `http://localhost:3000/api/v1`.
-- 실기기: 같은 Wi-Fi에서 Mac의 LAN IP(`http://192.168.x.x:3000/api/v1`). 평문 HTTP라 앱 Info.plist에 ATS 예외가 필요하다(앱 쪽 설정). 또는 임시 터널(`cloudflared tunnel --url http://localhost:3000`)의 HTTPS 주소를 쓴다.
+- iOS 시뮬레이터: `http://localhost:8080/api/v1`.
+- 실기기: 같은 Wi-Fi에서 Mac의 LAN IP(`http://192.168.x.x:8080/api/v1`). 평문 HTTP라 앱 Info.plist에 ATS 예외가 필요하다(앱 쪽 설정). 또는 임시 터널(`cloudflared tunnel --url http://localhost:8080`)의 HTTPS 주소를 쓴다.
 - 로컬 HTTP로 붙을 때는 `Secure` 쿠키가 전달되지 않으므로 `COOKIE_SECURE=false` (터널 HTTPS면 true 그대로). iOS 앱은 본문 `refreshToken`(§9.1)을 쓰므로 이 설정과 관계없이 refresh가 동작한다.
 - 개발 중 보류·실패 재현은 앱이 `X-Fixture-Scenario` 헤더를 붙이면 된다(`uncertain`·`no-concern`·`rec-timeout`·`ai-down` 등, production에선 무시).
 

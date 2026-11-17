@@ -2,7 +2,7 @@
 import http from 'k6/http';
 import { sleep } from 'k6';
 
-export const BASE_URL = (__ENV.BASE_URL || 'http://localhost:3000/api/v1').replace(/\/+$/, '');
+export const BASE_URL = (__ENV.BASE_URL || 'http://localhost:8080/api/v1').replace(/\/+$/, '');
 export const PASSWORD = __ENV.SEED_PASSWORD || '';
 // 기본은 ./gradlew loadImage로 만든 합성 PNG — 분류기는 얼굴이 아니어도 분류하므로 흐름·시간 측정은 되지만 결과는 의미 없다.
 // 실제 사진으로 재려면 본인이 동의한 사진을 IMAGE로 준다 (레포에 커밋 금지)

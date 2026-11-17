@@ -35,7 +35,7 @@ k6를 설치했으면 `k6 run …`, 아니면 Docker로 실행한다.
 
 k6() {
   docker run --rm -v "$PWD/load":/load -w /load grafana/k6:0.54.0 run \
-    -e BASE_URL="${BASE_URL:-http://host.docker.internal:3000/api/v1}" -e SEED_PASSWORD="$SEED_PASSWORD" "$@"
+    -e BASE_URL="${BASE_URL:-http://host.docker.internal:8080/api/v1}" -e SEED_PASSWORD="$SEED_PASSWORD" "$@"
 }
 
 BASE_URL=https://app.<도메인>/api/v1 k6 perf-01-submit-latency.js      # 약 15–20분 (추천 1건 ≈ 45초)

@@ -27,7 +27,7 @@ import tools.jackson.databind.json.JsonMapper;
  * 기본은 임시 계정을 가입시켜 쓰고 끝나면 탈퇴까지 한다 (시드 계정 불필요). 12개 엔드포인트와 주요 오류 경로를 본다. 분석은 분류 → 추천 완료(COMPLETED) 또는
  * 보류(WITHHELD)까지 확인한다 — 어느 쪽이 될지는 분류 결과에 달려 있다.
  *
- * <p>환경변수: SMOKE_BASE_URL(기본 http://localhost:3000/api/v1), SMOKE_EMAIL(기존 계정 — 가입·탈퇴 생략),
+ * <p>환경변수: SMOKE_BASE_URL(기본 http://localhost:8080/api/v1), SMOKE_EMAIL(기존 계정 — 가입·탈퇴 생략),
  * SMOKE_PASSWORD(기본 SEED_PASSWORD), SMOKE_IMAGE(JPEG/PNG 경로, 없으면 합성 PNG — 분류기는 얼굴이 아니어도 분류하므로 흐름
  * 확인은 되지만 결과는 의미 없음), SMOKE_TIMEOUT_SEC(추천 완료까지 최대 초, 기본 300), SMOKE_SCENARIO(X-Fixture-Scenario,
  * fixture 개발 서버에서만).
@@ -39,7 +39,7 @@ public final class SmokeFlow {
   private static final HttpClient CLIENT = HttpClient.newHttpClient();
   private static final Map<String, String> ENV = loadEnv();
   private static final String BASE =
-      env("SMOKE_BASE_URL", "http://localhost:3000/api/v1").replaceAll("/+$", "");
+      env("SMOKE_BASE_URL", "http://localhost:8080/api/v1").replaceAll("/+$", "");
   private static final String EXISTING_EMAIL = env("SMOKE_EMAIL", null);
   private static final int TIMEOUT_SEC = Integer.parseInt(env("SMOKE_TIMEOUT_SEC", "300"));
 

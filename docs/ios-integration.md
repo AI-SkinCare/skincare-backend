@@ -8,8 +8,8 @@
 
 | 환경 | Base URL |
 |---|---|
-| 시뮬레이터 | `http://localhost:3000/api/v1` |
-| 실기기 (같은 Wi-Fi) | `http://<Mac LAN IP>:3000/api/v1` — 평문 HTTP라 Info.plist ATS 예외 필요 |
+| 시뮬레이터 | `http://localhost:8080/api/v1` |
+| 실기기 (같은 Wi-Fi) | `http://<Mac LAN IP>:8080/api/v1` — 평문 HTTP라 Info.plist ATS 예외 필요 |
 | 배포 | `https://app.<도메인>/api/v1` |
 
 | 헤더 | 언제 | 값 |

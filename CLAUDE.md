@@ -26,7 +26,7 @@ export JAVA_HOME=$(/usr/libexec/java_home -v 21)   # macOS. Java 21 필요
 docker compose up -d db          # 로컬 PostgreSQL
 cp .env.example .env             # AI_MODE=fixture 가 기본
 ./gradlew seed                   # test01~40@skincare.dev, test01에 완료 분석 25건 (마이그레이션도 적용)
-./gradlew bootRun                # http://localhost:3000/api/docs (기동 시 Flyway 마이그레이션)
+./gradlew bootRun                # http://localhost:8080/api/docs (기동 시 Flyway 마이그레이션)
 
 ./gradlew spotlessApply          # 형식 맞추기 (CI는 spotlessCheck)
 ./gradlew test                   # 단위 (DB 없음)
