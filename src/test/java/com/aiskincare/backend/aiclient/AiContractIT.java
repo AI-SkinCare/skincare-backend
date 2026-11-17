@@ -85,6 +85,16 @@ class AiContractIT {
   }
 
   @Test
+  @DisplayName("GET /model-info — Spring 클라이언트가 경로 없는 모델 버전 응답을 읽는다")
+  void modelInfoDoesNotExposeLocalPaths() {
+    var result = JSON.valueToTree(client(TOKEN).modelInfo());
+    assertThat(result.has("rec_adapter_dir")).isFalse();
+    assertThat(result.get("rec_model_version").stringValue()).isNotBlank();
+    assertThat(result.get("skin_model_version").stringValue()).isNotBlank();
+    assertThat(result.get("disease_model_version").stringValue()).isNotBlank();
+  }
+
+  @Test
   @DisplayName("POST /infer/disease → 받은 분류를 그대로 /infer/disease-recommend에 다시 보내도 422가 아니다 (값 왕복)")
   void classifyRoundTrip() {
     var ai = client(TOKEN);
