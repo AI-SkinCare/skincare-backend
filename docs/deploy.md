@@ -53,12 +53,26 @@ GitHub Actions (ubuntu-latest)
 3. **Public hostname**: `skincare.doi2.my` → Service `HTTP` `web:80`
 4. 다음 배포부터 `cloudflared`가 자동으로 같이 뜬다 (지금 바로: 서버에서 `docker compose up -d cloudflared`)
 
-## AI 서버 연결 (예정 — Tailscale)
+## AI 서버 연결 (Tailscale)
 
-- 백엔드 → AI 서버는 Tailscale로 붙인다. 서버 `.env`:
-  `AI_MODE=real`, `AI_BASE_URL=http://<AI 기기 Tailscale IP>:8000`, `AI_INTERNAL_TOKEN=<AI와 같은 값>`
-- Docker Desktop(macOS) 컨테이너의 외부 연결은 호스트를 거치므로 호스트의 Tailscale 경로(100.x)로 나간다. MagicDNS 이름은 컨테이너에서 안 풀릴 수 있어 **IP로 쓴다**. 연결 후 `GET /api/v1/system/status`의 `aiAvailable: true`로 확인.
-- 그 전까지는 `AI_MODE=fixture`로 운영한다.
+- AI 추론 서버: 김우주 PC `main-desktop` (다른 tailnet에서 공유된 기기, Tailscale `100.125.153.53`)가 **Tailscale Serve HTTPS 8443**으로 연다.
+- 서버 `.env`:
+  ```
+  AI_BASE_URL=https://main-desktop.tail7612b9.ts.net:8443
+  AI_INTERNAL_TOKEN=<AI 서버와 같은 값>   # 1:1로만 전달, 커밋·채팅 금지
+  AI_MODE=real                              # 토큰이 있어야 기동된다 (없으면 fixture 유지)
+  ```
+- **이름 해석 주의**: 공유된 기기의 `*.tail7612b9.ts.net`은 이 tailnet의 MagicDNS로 풀리지 않고 공인 DNS로 넘어가 엉뚱한 IP가 나온다. 서버 `docker-compose.override.yml`에서 고정한다 (TLS는 이름 기준이라 그대로 검증됨):
+  ```yaml
+  services:
+    backend:
+      extra_hosts:
+        - "main-desktop.tail7612b9.ts.net:100.125.153.53"
+  ```
+- Docker Desktop(macOS) 컨테이너의 외부 연결은 호스트의 Tailscale 경로로 나간다. 확인:
+  `docker exec skincare-backend-backend-1 wget -qO- https://main-desktop.tail7612b9.ts.net:8443/health`
+  → `{"status":"ok",...,"disease_loaded":true}`, 백엔드 `GET /api/v1/system/status`의 `aiAvailable: true`
+- AI 서버는 개인 PC라 꺼져 있을 수 있다. 꺼지면 백엔드가 `aiAvailable: false`로 분석 제출만 막고 나머지는 동작한다.
 
 ## 수동 배포 · 되돌리기
 
