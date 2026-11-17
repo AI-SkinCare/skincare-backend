@@ -27,6 +27,8 @@ if grep -qE '^TUNNEL_TOKEN=.+' .env; then
 fi
 
 docker compose up -d --build "${services[@]}"
+# nginx 설정은 파일 하나만 마운트돼 있어 git checkout으로 파일이 바뀌어도 떠 있는 컨테이너는 예전 내용을 본다 → 재시작
+docker compose restart web
 
 echo "▶ 헬스체크 (최대 3분)"
 for _ in $(seq 1 36); do
