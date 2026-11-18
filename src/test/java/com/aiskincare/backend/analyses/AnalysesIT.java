@@ -54,7 +54,7 @@ class AnalysesIT extends IntegrationTestBase {
                 + "\"probabilities\":{\"건선\":0.019999999999999997,\"아토피\":0.9,"
                 + "\"여드름\":0.019999999999999997,\"정상\":0.019999999999999997,"
                 + "\"주사\":0.019999999999999997,\"지루\":0.019999999999999997},"
-                + "\"modelVersion\":\"quality_test_fixture_not_a_patient_prediction\",\"inferenceMs\":0}");
+                + "\"modelVersion\":\"quality_test_fixture_not_a_patient_prediction\",\"inferenceMs\":0,\"explanation\":null}");
     assertThat(data.get("recommendationStatus").isNull()).isTrue();
     assertThat(data.get("recommendation").isNull()).isTrue();
     assertThat(data.get("guidance").toString()).isEqualTo("[]");

@@ -122,7 +122,7 @@ class CommonIT extends IntegrationTestBase {
     assertThat(view.get("error").get("nullable").booleanValue()).isTrue();
     assertThat(view.get("recommendationStatus").get("nullable").booleanValue()).isTrue();
     assertThat(view.get("recommendationStatus").get("enum").toString())
-        .isEqualTo("[\"generated\",\"uncertain\",\"no_concern\"]");
+        .isEqualTo("[\"generated\",\"uncertain\",\"no_concern\",\"quality_rejected\"]");
     // 개정 B.1: 작업 상태는 대문자 5종
     assertThat(view.get("status").get("enum").toString())
         .isEqualTo("[\"QUEUED\",\"GENERATING\",\"COMPLETED\",\"WITHHELD\",\"FAILED\"]");

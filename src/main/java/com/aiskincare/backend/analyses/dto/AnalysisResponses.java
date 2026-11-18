@@ -1,5 +1,7 @@
 package com.aiskincare.backend.analyses.dto;
 
+import com.aiskincare.backend.aiclient.AiModels.Explanation;
+import com.aiskincare.backend.aiclient.AiModels.Generation;
 import com.aiskincare.backend.aiclient.AiModels.Ingredient;
 import com.aiskincare.backend.aiclient.AiModels.RoutineStep;
 import com.aiskincare.backend.analyses.NormalizedSurvey;
@@ -28,7 +30,9 @@ public final class AnalysisResponses {
       @Schema(description = "6종 라벨(한글) → 0–1, 건선·아토피·여드름·정상·주사·지루 순서")
           Map<String, Double> probabilities,
       @Schema(example = "densenet121_s2_3ea9506") String modelVersion,
-      @Schema(example = "45") int inferenceMs) {}
+      @Schema(example = "45") int inferenceMs,
+      @Schema(description = "선택형 모델 참고 영역. 병변 위치·중증도 정답이 아니며 원본 얼굴을 포함하지 않음")
+          Explanation explanation) {}
 
   public record CodeLabel<T>(
       T code, @Schema(description = "AI 라벨. 화면 표기는 앱이 code로 매핑") String label) {}
@@ -44,7 +48,7 @@ public final class AnalysisResponses {
       List<String> inputNotes,
       String disclaimer,
       @Schema(description = "표현 필터 개입 여부. 화면 비표시(분석용)") boolean filtered,
-      @Schema(description = "true면 규칙 기반 대체 답변. 화면 비표시(분석용)") boolean usedFallback,
+      @Schema(description = "대체 답변 여부. generation.origin으로 근거 카드/규칙 기반을 구별") boolean usedFallback,
       @Schema(example = "rec_sllm_v2") String modelVersion,
       @Schema(example = "43000") int inferenceMs) {}
 
@@ -59,7 +63,8 @@ public final class AnalysisResponses {
       @Schema(description = "접수 때 저장한 분류. 상태와 무관하게 항상 포함") Disease disease,
       @Schema(
               nullable = true,
-              description = "COMPLETED(generated)·WITHHELD(uncertain·no_concern)일 때만")
+              description =
+                  "COMPLETED(generated)·WITHHELD(uncertain·no_concern·quality_rejected)일 때만")
           RecommendationStatus recommendationStatus,
       @Schema(nullable = true, description = "COMPLETED일 때만") Recommendation recommendation,
       @Schema(description = "AI 안내 문장. COMPLETED·WITHHELD일 때 채워지고 그 밖에는 []") List<String> guidance,
@@ -69,7 +74,9 @@ public final class AnalysisResponses {
           Long estimatedWaitSec,
       @Schema(example = "2026-10-16T09:12:33Z") String createdAt,
       @Schema(example = "2026-10-16T09:13:21Z", nullable = true) String completedAt,
-      @Schema(description = "저장한 정규화 설문(클라이언트 코드). 앱이 다음 분석의 기본값으로 쓴다") NormalizedSurvey survey) {}
+      @Schema(description = "저장한 정규화 설문(클라이언트 코드). 앱이 다음 분석의 기본값으로 쓴다") NormalizedSurvey survey,
+      @Schema(description = "AI 생성 출처와 품질 정보. not_generated는 미생성, 구버전 출처는 null")
+          Generation generation) {}
 
   public record ListItem(
       @Schema(example = ULID_EXAMPLE) String analysisId,

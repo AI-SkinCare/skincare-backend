@@ -1,6 +1,7 @@
 package com.aiskincare.backend.analyses;
 
 import com.aiskincare.backend.aiclient.AiModels.DiseaseResult;
+import com.aiskincare.backend.aiclient.AiModels.Generation;
 import com.aiskincare.backend.aiclient.AiModels.Ingredient;
 import com.aiskincare.backend.aiclient.AiModels.RoutineStep;
 import com.aiskincare.backend.common.enums.AnalysisStatus;
@@ -26,7 +27,37 @@ public final class AnalysisRows {
       Instant completedAt,
       int attemptCount,
       String errorCode,
-      Instant createdAt) {}
+      Instant createdAt,
+      Generation generation) {
+    public AnalysisRow(
+        String id,
+        long userId,
+        AnalysisStatus status,
+        DiseaseResult disease,
+        int classifyMs,
+        RecommendationStatus recommendationStatus,
+        List<String> guidance,
+        Instant queuedAt,
+        Instant completedAt,
+        int attemptCount,
+        String errorCode,
+        Instant createdAt) {
+      this(
+          id,
+          userId,
+          status,
+          disease,
+          classifyMs,
+          recommendationStatus,
+          guidance,
+          queuedAt,
+          completedAt,
+          attemptCount,
+          errorCode,
+          createdAt,
+          Generation.UNKNOWN);
+    }
+  }
 
   public record RecommendationRow(
       SkinType skinType,

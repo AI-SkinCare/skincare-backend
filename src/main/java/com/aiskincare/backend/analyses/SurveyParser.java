@@ -9,6 +9,7 @@ import com.aiskincare.backend.common.validation.FieldIssue;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Function;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -28,6 +29,12 @@ public final class SurveyParser {
   }
 
   private static final JsonMapper MAPPER = JsonMapper.builder().build();
+  private static final Set<String> ITCH = Set.of("none", "occasional", "frequent");
+  private static final Set<String> FLAKING = Set.of("none", "dry", "greasy", "both");
+  private static final Set<String> ONSET =
+      Set.of("under_one_week", "one_to_four_weeks", "over_four_weeks");
+  private static final Set<String> AREAS =
+      Set.of("forehead", "hairline_scalp", "eyebrows", "around_nose", "cheeks", "jaw_chin");
 
   public static Result parse(String raw) {
     if (raw == null || raw.isEmpty()) return fail("survey", "required");
@@ -118,11 +125,92 @@ public final class SurveyParser {
       }
     }
 
+    List<String> avoidIngredients = new ArrayList<>();
+    JsonNode avoid = root.get("avoidIngredients");
+    if (present(avoid)) {
+      if (!avoid.isArray()) errors.add(issue("avoidIngredients", "invalid_type"));
+      else if (avoid.size() > 30) errors.add(issue("avoidIngredients", "too_many"));
+      else
+        for (JsonNode item : avoid) {
+          if (!item.isString()) {
+            errors.add(issue("avoidIngredients", "invalid_type"));
+            break;
+          }
+          String name = item.stringValue().strip();
+          if (name.isEmpty() || name.length() > 100) {
+            errors.add(issue("avoidIngredients", "invalid_length"));
+            break;
+          }
+          if (!avoidIngredients.contains(name)) avoidIngredients.add(name);
+        }
+    }
+    SymptomProfile symptomProfile = parseSymptomProfile(root.get("symptomProfile"), errors);
     if (!errors.isEmpty()) return new Result(null, errors);
     return new Result(
         new NormalizedSurvey(
-            gender, ageBand, skinType, sleepHours, water, sun, stress, concerns, products, note),
+            gender,
+            ageBand,
+            skinType,
+            sleepHours,
+            water,
+            sun,
+            stress,
+            concerns,
+            products,
+            note,
+            avoidIngredients,
+            symptomProfile),
         List.of());
+  }
+
+  private static SymptomProfile parseSymptomProfile(JsonNode node, List<FieldIssue> errors) {
+    if (!present(node)) return null;
+    if (!node.isObject()) {
+      errors.add(issue("symptomProfile", "invalid_type"));
+      return null;
+    }
+    String itch = symptomCode(node, "itch", ITCH, errors);
+    String flaking = symptomCode(node, "flaking", FLAKING, errors);
+    Boolean redness = symptomBoolean(node, "recurringRedness", errors);
+    Boolean plugs = symptomBoolean(node, "visiblePlugs", errors);
+    String onset = symptomCode(node, "onset", ONSET, errors);
+    List<String> areas = new ArrayList<>();
+    JsonNode entries = node.get("areas");
+    if (present(entries)) {
+      String field = "symptomProfile.areas";
+      if (!entries.isArray()) errors.add(issue(field, "invalid_type"));
+      else if (entries.size() > AREAS.size()) errors.add(issue(field, "too_many"));
+      else {
+        for (JsonNode entry : entries) {
+          if (!entry.isString() || !AREAS.contains(entry.stringValue())) {
+            errors.add(issue(field, "invalid_value"));
+            break;
+          }
+          if (areas.contains(entry.stringValue())) {
+            errors.add(issue(field, "duplicate"));
+            break;
+          }
+          areas.add(entry.stringValue());
+        }
+      }
+    }
+    return new SymptomProfile(itch, flaking, redness, plugs, onset, areas);
+  }
+
+  private static String symptomCode(
+      JsonNode profile, String key, Set<String> allowed, List<FieldIssue> errors) {
+    JsonNode entry = profile.get(key);
+    if (!present(entry)) return null;
+    return parseCode(
+        entry, "symptomProfile." + key, code -> allowed.contains(code) ? code : null, errors);
+  }
+
+  private static Boolean symptomBoolean(JsonNode profile, String key, List<FieldIssue> errors) {
+    JsonNode entry = profile.get(key);
+    if (!present(entry)) return null;
+    if (entry.isBoolean()) return entry.booleanValue();
+    errors.add(issue("symptomProfile." + key, "invalid_type"));
+    return null;
   }
 
   private static boolean present(JsonNode node) {
