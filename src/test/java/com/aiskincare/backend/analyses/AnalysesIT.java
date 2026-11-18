@@ -164,10 +164,14 @@ class AnalysesIT extends IntegrationTestBase {
   static Stream<Arguments> invalidInputs() {
     Map<String, Object> tooMany = new LinkedHashMap<>(Factories.defaultSurvey());
     tooMany.put("concerns", List.of("pore", "acne", "wrinkle", "redness"));
+    var outOfRangeSleep = Factories.defaultSurvey();
+    outOfRangeSleep.put("sleepHours", 4_294_967_296L);
     return Stream.of(
         Arguments.of("survey JSON 파싱 실패", "{not json", "survey", "invalid_format"),
         Arguments.of("survey 누락", null, "survey", "required"),
-        Arguments.of("고민 4개", surveyJson(tooMany), "survey.concerns", "too_many"));
+        Arguments.of("고민 4개", surveyJson(tooMany), "survey.concerns", "too_many"),
+        Arguments.of(
+            "수면 시간이 int 범위를 넘음", surveyJson(outOfRangeSleep), "survey.sleepHours", "out_of_range"));
   }
 
   @ParameterizedTest(name = "{0} → 422 E4002")
@@ -179,6 +183,8 @@ class AnalysesIT extends IntegrationTestBase {
     assertThat(res.errorCode()).isEqualTo("E4002");
     assertThat(res.body().get("error").get("detail").get("fields").toString())
         .contains("{\"field\":\"" + field + "\",\"reason\":\"" + reason + "\"}");
+    assertThat(count("analyses")).isZero();
+    assertThat(count("surveys")).isZero();
   }
 
   @Test
