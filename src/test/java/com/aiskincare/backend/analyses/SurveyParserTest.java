@@ -60,7 +60,11 @@ class SurveyParserTest {
         "\"concerns\":[\"pore\",\"acne\",\"wrinkle\",\"redness\"] | survey.concerns | too_many",
         "\"concerns\":[\"pore\",\"pore\"] | survey.concerns | duplicate",
         "\"concerns\":[\"여드름\"] | survey.concerns | invalid_value",
+        "\"sleepHours\":-1 | survey.sleepHours | out_of_range",
         "\"sleepHours\":15 | survey.sleepHours | out_of_range",
+        "\"sleepHours\":4294967296 | survey.sleepHours | out_of_range",
+        "\"sleepHours\":-4294967296 | survey.sleepHours | out_of_range",
+        "\"sleepHours\":9223372036854775808 | survey.sleepHours | out_of_range",
         "\"sleepHours\":6.5 | survey.sleepHours | invalid_type",
         "\"skinType\":\"복합성\" | survey.skinType | invalid_value",
         "\"currentProducts\":[\"a\",\"b\",\"c\",\"d\",\"e\",\"f\"] | survey.currentProducts | too_many",
@@ -69,6 +73,14 @@ class SurveyParserTest {
   void fieldErrors(String extra, String field, String reason) {
     assertThat(SurveyParser.parse("{" + OK + "," + extra + "}").errors())
         .contains(new FieldIssue(field, reason));
+  }
+
+  @ParameterizedTest
+  @CsvSource({"0", "14"})
+  void acceptsSleepHourBoundaries(int hours) {
+    var result = SurveyParser.parse("{" + OK + ",\"sleepHours\":" + hours + "}");
+    assertThat(result.ok()).isTrue();
+    assertThat(result.survey().sleepHours()).isEqualTo(hours);
   }
 
   @Test

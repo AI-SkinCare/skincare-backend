@@ -59,7 +59,7 @@ public final class SurveyParser {
     if (present(sleep)) {
       if (!sleep.isIntegralNumber()) {
         errors.add(issue("sleepHours", "invalid_type"));
-      } else if (sleep.intValue() < 0 || sleep.intValue() > 14) {
+      } else if (!sleep.canConvertToInt() || sleep.intValue() < 0 || sleep.intValue() > 14) {
         errors.add(issue("sleepHours", "out_of_range"));
       } else {
         sleepHours = sleep.intValue();

@@ -16,8 +16,8 @@ class SymptomProfileIT extends IntegrationTestBase {
   @Autowired AnalysisRepository repository;
 
   @Test
-  @DisplayName("(개정) 자가 응답은 소유자 분석에 저장하고 AI 요청에는 포함하지 않는다")
-  void profileIsSavedForOwnerWithoutChangingClassification() {
+  @DisplayName("재로그인한 소유자가 분석 이력에서 선택 증상 여섯 값을 그대로 조회한다")
+  void profileIsSavedForOwnerAfterReloginWithoutChangingClassification() {
     var owner = factories.userWithToken();
     var other = factories.userWithToken();
     var legacy = factories.submit(other);
@@ -50,14 +50,24 @@ class SymptomProfileIT extends IntegrationTestBase {
     assertThat(saved.symptomProfile().recurringRedness()).isFalse();
     assertThat(AiTransform.toAiSurvey(saved)).doesNotContainKey("symptomProfile");
 
-    var detail = http.get("/api/v1/analyses/" + id).bearer(owner.accessToken()).send();
+    var loggedOut =
+        http.post("/api/v1/auth/logout")
+            .bearer(owner.accessToken())
+            .header("Cookie", "refresh_token=" + owner.refreshCookie())
+            .send();
+    assertThat(loggedOut.status()).isEqualTo(204);
+    var relogged = factories.login(owner.user());
+    var history = http.get("/api/v1/analyses").bearer(relogged.accessToken()).send();
+    assertThat(history.status()).isEqualTo(200);
+    assertThat(history.data().get("items").get(0).get("analysisId").stringValue()).isEqualTo(id);
+    var detail = http.get("/api/v1/analyses/" + id).bearer(relogged.accessToken()).send();
     var expected = TestHttp.json().valueToTree(answers);
     assertThat(detail.status()).isEqualTo(200);
     assertThat(detail.data().get("survey").get("symptomProfile")).isEqualTo(expected);
     assertThat(created.data().get("survey").get("symptomProfile")).isEqualTo(expected);
     assertThat(http.get("/api/v1/analyses/" + id).bearer(other.accessToken()).send().status())
         .isEqualTo(404);
-    assertThat(http.delete("/api/v1/analyses/" + id).bearer(owner.accessToken()).send().status())
+    assertThat(http.delete("/api/v1/analyses/" + id).bearer(relogged.accessToken()).send().status())
         .isEqualTo(204);
     assertThat(repository.survey(id)).isEmpty();
   }
