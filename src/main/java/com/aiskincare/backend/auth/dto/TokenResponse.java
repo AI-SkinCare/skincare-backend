@@ -4,13 +4,13 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import io.swagger.v3.oas.annotations.media.Schema;
 
-/** 로그인·재발급 응답. refreshToken은 X-Client: ios일 때만 (없으면 필드 자체가 없다) */
+/** 로그인·재발급 응답. refreshToken은 네이티브 앱 헤더일 때만 (없으면 필드 자체가 없다) */
 @JsonPropertyOrder({"accessToken", "expiresIn", "refreshToken", "user"})
 public record TokenResponse(
     @Schema(example = "eyJhbGciOi…") String accessToken,
     @Schema(example = "3600") long expiresIn,
     @Schema(
-            description = "[앱 협의] `X-Client: ios` 요청일 때만. 쿠키 refresh_token과 같은 값",
+            description = "[앱 협의] ios 또는 android 요청일 때만. 쿠키 refresh_token과 같은 값",
             requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         @JsonInclude(JsonInclude.Include.NON_NULL)
         String refreshToken,

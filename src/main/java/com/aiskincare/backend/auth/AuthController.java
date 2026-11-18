@@ -52,14 +52,16 @@ public class AuthController {
     return ApiEnvelope.ok(new SignupResponse(auth.signup(request)));
   }
 
-  @Operation(summary = "로그인 — 리프레시 토큰은 httpOnly 쿠키 (+ X-Client: ios면 본문) (FR-AUTH-02)")
+  @Operation(summary = "로그인 — 리프레시 토큰은 httpOnly 쿠키 (+ X-Client가 ios 또는 android면 본문) (FR-AUTH-02)")
   @PublicApi
   @LoginRateLimited
   @ApiErrorCodes({ErrorCode.E4004, ErrorCode.E4002, ErrorCode.E1003})
   @PostMapping("/login")
   public ApiEnvelope<TokenResponse> login(
       @Valid @RequestBody LoginRequest request,
-      @Parameter(in = ParameterIn.HEADER, description = "[앱 협의] ios면 응답 data.refreshToken 포함")
+      @Parameter(
+              in = ParameterIn.HEADER,
+              description = "[앱 협의] ios 또는 android면 응답 data.refreshToken 포함")
           @RequestHeader(value = ClientType.HEADER, required = false)
           String client,
       HttpServletResponse response) {
@@ -76,7 +78,9 @@ public class AuthController {
   @PostMapping("/refresh")
   public ApiEnvelope<TokenResponse> refresh(
       @Valid @RequestBody(required = false) RefreshRequest body,
-      @Parameter(in = ParameterIn.HEADER, description = "[앱 협의] ios면 응답 data.refreshToken 포함")
+      @Parameter(
+              in = ParameterIn.HEADER,
+              description = "[앱 협의] ios 또는 android면 응답 data.refreshToken 포함")
           @RequestHeader(value = ClientType.HEADER, required = false)
           String client,
       HttpServletRequest request,

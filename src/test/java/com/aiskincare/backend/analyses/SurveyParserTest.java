@@ -85,4 +85,29 @@ class SurveyParserTest {
     assertThat(result.ok()).isTrue();
     assertThat(result.survey().skinType()).isNull();
   }
+
+  @Test
+  void blankAndUnknownOnlyProfilesAreNotStoredAsAnswers() {
+    var result =
+        SurveyParser.parse(
+            "{"
+                + OK
+                + ",\"symptomProfile\":{\"itch\":null,\"areas\":[],\"extra\":\"not stored\"}}");
+    assertThat(result.ok()).isTrue();
+    assertThat(result.survey().symptomProfile()).isNull();
+  }
+
+  @ParameterizedTest
+  @CsvSource(
+      delimiter = '|',
+      value = {
+        "[] | survey.symptomProfile | invalid_type",
+        "{\"itch\":\"unknown\"} | survey.symptomProfile.itch | invalid_value",
+        "{\"areas\":[\"cheeks\",\"cheeks\"]} | survey.symptomProfile.areas | duplicate",
+        "{\"areas\":[\"body\"]} | survey.symptomProfile.areas | invalid_value"
+      })
+  void malformedSymptomProfile(String profile, String field, String reason) {
+    var result = SurveyParser.parse("{" + OK + ",\"symptomProfile\":" + profile + "}");
+    assertThat(result.errors()).containsExactly(new FieldIssue(field, reason));
+  }
 }

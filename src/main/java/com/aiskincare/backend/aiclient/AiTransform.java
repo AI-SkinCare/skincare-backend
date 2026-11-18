@@ -33,6 +33,7 @@ public final class AiTransform {
       out.put("avoidIngredients", survey.avoidIngredients());
     out.put("selfReportedConcerns", survey.concerns().stream().map(Concern::label).toList());
     if (survey.note() != null && !survey.note().isEmpty()) out.put("note", survey.note());
+    // symptomProfile은 현재 분석의 자가 기록 전용이며, AI 요청에는 넣지 않는다.
     return out;
   }
 

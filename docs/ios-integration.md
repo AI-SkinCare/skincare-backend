@@ -2,6 +2,8 @@
 
 **2026-11-12 추가:** 품질 보류(`quality_rejected`)와 생성 출처(`generation.origin`, `not_generated` 포함), 회피 성분 설문을 지원합니다. [추가 계약](ai-generation-contract.md)을 함께 적용합니다. `not_generated`는 추천 상태 enum 값이 아닙니다.
 
+**2026-11-17 추가:** [현재 피부 상태 선택 설문](TRD.md#선택-설문-현재-피부-상태)은 미입력으로 제출할 수 있습니다. 답변은 해당 분석에만 저장되며 새 촬영에 복사하지 않습니다. 현재 분류·추천 입력과 점수는 바뀌지 않습니다.
+
 백엔드 API를 Swift 앱에서 쓸 때 지켜야 할 것만 모았습니다. 계약의 기준은 Swagger(`/api/docs-json`)이고, 근거는 [TRD](TRD.md)와 개정 수행계획서(2026-10-15) 부록 B, 팀 문서 SC-03입니다.
 
 > **10/16 분석 API가 바뀌었습니다 (호환 깨짐).** 피부 지표 측정(`measurement`)·추이(`/trend`)·`deviceType`이 없어지고, 이미지 분류(`disease`)와 추천 상태(`status`·`recommendationStatus`·`guidance`)로 바뀌었습니다. 인증·오류 봉투는 그대로입니다. 바뀐 곳: §4·§5·§6·§7·§8.

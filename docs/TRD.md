@@ -16,7 +16,7 @@
 
 **우선순위**: 개정 수행계획서 > 그 밖의 팀 문서(SC-0x) > 이 문서 > 코드에서의 추측. 이 문서와 팀 문서가 다르면 팀 문서를 따르고 이 문서를 고친다. SC-0x 중 회귀 지표(수분·탄력·색소침착·모공)·ROI·점수·추이에 관한 내용은 개정안으로 범위에서 빠졌다.
 
-**클라이언트**: 실제 클라이언트는 **Swift iOS 앱**이다. 개정 수행계획서(3.2)가 Swift iOS 앱 → Spring Boot → FastAPI 구성을 채택했다(SC-0x에는 아직 React 웹·NestJS로 적혀 있음). 네이티브 앱용 리프레시 토큰 본문 전달(`X-Client`, §9.1)은 [앱 협의]로 더했다. 앱은 `Origin`을 보내지 않으므로 CORS와도 무관하다.
+**클라이언트**: 클라이언트는 **Swift iOS 앱과 Android 앱**이다. 개정 수행계획서(3.2)가 Swift iOS 앱 → Spring Boot → FastAPI 구성을 채택했다(SC-0x에는 아직 React 웹·NestJS로 적혀 있음). 네이티브 앱용 리프레시 토큰 본문 전달(`X-Client`, §9.1)은 [앱 협의]로 더했다. 앱은 `Origin`을 보내지 않으므로 CORS와도 무관하다.
 
 **개정 이력**
 
@@ -24,6 +24,7 @@
 |---|---|
 | 2026-11-12 | 사용자 요청: `quality_rejected` 보류, `generation` 출처·품질 정보, 성분 purpose 출처, `avoidIngredients` 설문, 모델 버전 160자. 상세 계약은 [ai-generation-contract.md](ai-generation-contract.md). V3는 기존 행을 보존한다. |
 | 2026-11-13 | 사용자 요청: 선택형 Grad-CAM 참고 영역. 분류 호출에 `include_explanation=true`, 접수·상세 `disease.explanation`, nullable JSONB V4. 이력은 히트맵 제외. 상세 검증·호환 계약은 [gradcam-contract.md](gradcam-contract.md). |
+| 2026-11-17 | 사용자 요청: 분류 후보로 검토할 현재 피부 상태를 선택 설문 `survey.symptomProfile`로 접수한다. [설문 계약](#선택-설문-현재-피부-상태)을 따른다. |
 | 2026-10-10 | 최초 작성 |
 | 2026-10-10 | [앱 협의] §9 네이티브 앱 리프레시 토큰 본문 전달(`X-Client: ios`) 추가 — SC-03 반영 필요 |
 | 2026-10-10 | §12.7·부록 B: fixture를 `skincare-ai/docs/fixtures/` 실제 출력으로 교체 |
@@ -483,7 +484,7 @@ CREATE TABLE recommendations (
 | 형식 | JWT HS256, `JWT_ACCESS_SECRET` | JWT HS256, `JWT_REFRESH_SECRET` [구현 결정] |
 | payload | `{ sub: userId }` | `{ sub: userId, jti: 랜덤 16바이트 hex }` |
 | 수명 | 1시간 (`expiresIn: 3600`) | 14일 |
-| 전달 | 응답 본문 `accessToken` → 앱 메모리 | `Set-Cookie` httpOnly. `X-Client: ios` 요청이면 응답 본문 `refreshToken`도 [앱 협의] |
+| 전달 | 응답 본문 `accessToken` → 앱 메모리 | `Set-Cookie` httpOnly. 네이티브 앱 헤더(ios 또는 android) 요청이면 응답 본문 `refreshToken`도 [앱 협의] |
 | 서버 저장 | 없음 | `refresh_tokens.token_hash = SHA-256(토큰 문자열) hex` |
 
 #### 네이티브 앱 전달 방식 (`X-Client`) [앱 협의]
@@ -492,14 +493,14 @@ CREATE TABLE recommendations (
 
 | 항목 | 규칙 |
 |---|---|
-| 헤더 | 앱은 모든 요청에 `X-Client: ios`를 보낸다. 값은 앞뒤 공백 제거·소문자로 비교 |
-| 응답 | `POST /auth/login`, `POST /auth/refresh`: `X-Client: ios`이면 응답 `data`에 `refreshToken` 추가. 이때도 `Set-Cookie`는 똑같이 보낸다. 헤더가 없거나 다른 값이면 `refreshToken` 필드 없음 (기존과 동일) |
+| 헤더 | iOS는 `X-Client: ios`, Android는 `X-Client: android`를 보낸다. 값은 앞뒤 공백 제거·소문자로 비교 |
+| 응답 | `POST /auth/login`, `POST /auth/refresh`: 네이티브 앱 헤더(ios 또는 android)이면 응답 `data`에 `refreshToken` 추가. 이때도 `Set-Cookie`는 똑같이 보낸다. 헤더가 없거나 다른 값이면 `refreshToken` 필드 없음 (기존과 동일) |
 | 요청 | `POST /auth/refresh`, `POST /auth/logout`: 쿠키 `refresh_token`이 없으면 본문 `{ "refreshToken": "…" }`을 읽는다. 둘 다 있으면 **쿠키 우선**. 본문 `refreshToken`이 문자열이 아니면 422 E4002. 이 본문은 `X-Client` 헤더와 관계없이 받는다 |
 | 검증 | 본문으로 온 토큰도 쿠키와 **같은 경로**로 검증한다 — 교체·재사용 감지·해시 저장 규칙 그대로 (§9.4) |
 | 로그 | 본문 `refreshToken`도 로그 금지 (redact `*.refreshToken`, 본문은 애초에 기록하지 않음) |
-| 확장 | Android를 만들면 `X-Client: android`로 같은 방식을 쓴다. 허용 값은 코드 상수 한 곳(`auth/ClientType`)에만 두고, 추가할 때는 이 표를 먼저 고친다 |
+| 확장 | 두 플랫폼 모두 같은 인증 계약을 사용한다. 허용 값은 코드 상수 한 곳(`auth/ClientType`)에만 두고, 추가할 때는 이 표를 먼저 고친다 |
 
-- 앱은 `refreshToken`을 Keychain에 저장하고 refresh·logout 때 본문으로 보낸다.
+- iOS는 `refreshToken`을 Keychain에, Android는 현재 세션 메모리에 보관하고 refresh·logout 때 본문으로 보낸다.
 - 백엔드는 쿠키를 우선하므로, URLSession이 오래된 쿠키를 자동으로 붙이면 그 쿠키가 쓰인다. 쿠키와 Keychain 값이 어긋나 이미 교체된 토큰이 오면 재사용 감지로 전체 로그아웃되므로, 앱은 auth 요청에서 쿠키 자동 처리를 끄는 것(`httpShouldHandleCookies = false`)을 권장한다 (앱 쪽 설정).
 - 브라우저 클라이언트가 없으므로 본문 전달로 httpOnly 쿠키의 보호를 잃지 않는다. 웹 클라이언트가 생기면 웹은 `X-Client`를 보내지 않고 쿠키만 쓴다.
 
@@ -566,13 +567,13 @@ Set-Cookie: refresh_token=<token>; HttpOnly; Secure; SameSite=Strict; Path=/api/
 }
 ```
 
-`refreshToken`은 `X-Client: ios` 요청일 때만 있다 [앱 협의, §9.1]. 쿠키 값과 같은 토큰이다.
+`refreshToken`은 네이티브 앱 헤더(ios 또는 android) 요청일 때만 있다 [앱 협의, §9.1]. 쿠키 값과 같은 토큰이다.
 
 테스트: TC-AUTH-04, TC-SEC-04(같은 IP 11번째 429, 다른 IP 정상).
 
 ### 9.4 POST /auth/refresh — 인증 없음 (FR-AUTH-02)
 
-쿠키 `refresh_token`(없으면 본문 `{ "refreshToken": "…" }` [앱 협의, §9.1])을 검증하고 **새 리프레시 토큰으로 교체**한다. 응답은 로그인과 같은 구조 + 새 쿠키 (`X-Client: ios`면 `data.refreshToken`에 새 토큰).
+쿠키 `refresh_token`(없으면 본문 `{ "refreshToken": "…" }` [앱 협의, §9.1])을 검증하고 **새 리프레시 토큰으로 교체**한다. 응답은 로그인과 같은 구조 + 새 쿠키 (네이티브 앱 헤더(ios 또는 android)면 `data.refreshToken`에 새 토큰).
 
 ```
 1. 쿠키도 본문 refreshToken도 없음               → 401 E1001
@@ -658,6 +659,7 @@ survey
 | concerns | - | 고민 코드 배열(부록 A.4), 최대 3개, 중복 불가. 정상 분류일 때 추천 대상이 된다 — 없으면 정상 분류는 `no_concern` 보류 [개정 1.3] |
 | currentProducts | - | 문자열 배열, 최대 5개, 각 1–30자 |
 | avoidIngredients | - | 피할 성분명 배열, 최대 30개, 각 1–100자. 양끝 공백 제거, 중복 제거 후 AI에 전달 |
+| symptomProfile | - | 현재 피부 상태의 자가 응답. [선택 설문 계약](#선택-설문-현재-피부-상태). |
 | note | - | 300자 이하 |
 
 앱(Swift)이 지켜야 할 업로드 규칙 — 정도희에게 전달 [구현 결정] (앱 연동 규칙 전체는 [ios-integration.md](ios-integration.md)):
@@ -667,7 +669,25 @@ survey
 - 긴 변 1600px로 줄이고 JPEG 품질 0.9 (SC-02 §5와 같은 기준). 짧은 변 720px 이상은 유지된다.
 - 필드 이름 `image`·`survey`, `survey`는 JSON **문자열**.
 
-`survey` 파싱: JSON 파싱 실패 → E4002. 검증 실패 필드는 `survey.` 접두로 detail에 담는다. 저장·응답용으로 **정규화된 객체**(모든 키 포함, 미입력은 `null`, 배열은 `[]`)를 쓴다 [구현 결정].
+`survey` 파싱: JSON 파싱 실패 → E4002. 검증 실패 필드는 `survey.` 접두로 detail에 담는다. 저장·응답용으로 **정규화된 객체**(미입력 일반 값은 `null`, 배열은 `[]`)를 쓴다. 선택 객체 `symptomProfile`은 유효한 답변이 없으면 생략한다.
+
+#### 선택 설문: 현재 피부 상태
+
+사진만으로 알기 어려운 자가 보고를 구조화한다. 최근 일주일의 가려움, 각질, 반복적 붉어짐, 막혀 보이는 모공과 관련 부위를 묻고, 시작 시점은 현재 고민을 처음 느낀 때를 묻는다. [가려움과 각질(AAD 아토피 자료)](https://www.aad.org/public/diseases/eczema/types/atopic-dermatitis/symptoms), [각질과 부위(AAD 지루 자료)](https://www.aad.org/public/diseases/a-z/seborrheic-dermatitis-symptoms), [붉어짐(AAD 주사 자료)](https://www.aad.org/public/diseases/rosacea/what-is/symptoms), [막힌 모공(AAD 여드름 자료)](https://www.aad.org/public/diseases/acne/really-acne/stubborn-acne)를 문항 선정에 참고했다. 특정 값으로 질환을 확정하거나 모델 중요도를 추정하지 않는다.
+
+예: `"symptomProfile": {"itch":"frequent","flaking":"dry","recurringRedness":false,"visiblePlugs":false,"onset":"one_to_four_weeks","areas":["eyebrows","around_nose"]}`
+
+| 선택 항목 | 값 |
+|---|---|
+| `itch` | `none`, `occasional`, `frequent` |
+| `flaking` | `none`, `dry`, `greasy`, `both` |
+| `recurringRedness`, `visiblePlugs` | JSON 불리언. `false`는 명시적 없음이며 미응답과 다르다. |
+| `onset` | `under_one_week` (1주 미만), `one_to_four_weeks` (1~4주), `over_four_weeks` (4주 초과) |
+| `areas` | `forehead`, `hairline_scalp`, `eyebrows`, `around_nose`, `cheeks`, `jaw_chin`. 최대 6개, 중복 불가. 선택하지 않으면 생략. |
+
+모든 문항은 생략하거나 `null`로 보낼 수 있다. 알 수 없는 객체 키는 버린다. 정의된 필드의 타입·값 위반은 입력값 자체를 노출하지 않는 422 E4002로 응답한다. 기존 `surveys.payload` JSONB를 사용하므로 마이그레이션은 없다. 소유자 접수·상세 응답에 해당 분석의 값만 반환하며 새 촬영에는 이전 답변을 복사하지 않는다. 기존 계정·분석 삭제 규칙을 적용한다.
+
+현재 이미지 분류기·Grad-CAM·Qwen에는 이 객체를 전달하지 않는다. 실사용 답변은 학습 자료로 자동 수집·내보내지 않는다. 모델 반영은 적절한 사용 범위의 사진·동시점 설문·검토된 참조 라벨이 확보된 뒤, 환자 단위 분리로 사진 전용 대비 사진+설문을 비교하고 문항을 하나씩 제거해 기여도를 확인한 뒤 판단한다.
 
 #### 처리 순서 (SC-03 §4.1 순서를 지킴)
 

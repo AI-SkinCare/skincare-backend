@@ -53,11 +53,12 @@ class AuthHelpersTest {
   }
 
   @Test
-  @DisplayName("X-Client [앱 협의]: ios만 (공백·대소문자 무시)")
+  @DisplayName("X-Client [앱 협의]: ios·android (공백·대소문자 무시)")
   void clientType() {
     assertThat(ClientType.isNative("ios")).isTrue();
     assertThat(ClientType.isNative(" iOS ")).isTrue();
-    assertThat(ClientType.isNative("android")).isFalse();
+    assertThat(ClientType.isNative(" Android ")).isTrue();
+    assertThat(ClientType.isNative("web")).isFalse();
     assertThat(ClientType.isNative(null)).isFalse();
   }
 

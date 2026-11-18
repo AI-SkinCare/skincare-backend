@@ -318,26 +318,46 @@ class AuthIT extends IntegrationTestBase {
   }
 
   @Nested
-  @DisplayName("[앱 협의] X-Client: ios — 본문 refreshToken (TRD §9.1)")
+  @DisplayName("네이티브 앱의 본문 refreshToken (TRD §9.1)")
   class NativeClient {
-    private record IosLogin(Factories.User user, Res res, String refreshToken) {}
+    private record NativeLogin(Factories.User user, Res res, String refreshToken) {}
 
-    private IosLogin iosLogin() {
+    private NativeLogin iosLogin() {
+      return nativeLogin("ios");
+    }
+
+    private NativeLogin nativeLogin(String client) {
       var user = factories.createUser();
       Res res =
           http.post("/api/v1/auth/login")
-              .header("X-Client", "ios")
+              .header("X-Client", client)
               .header("CF-Connecting-IP", Factories.randomIp())
               .json(Map.of("email", user.email(), "password", Factories.PASSWORD))
               .send();
       assertThat(res.status()).isEqualTo(200);
-      return new IosLogin(user, res, res.data().get("refreshToken").stringValue());
+      return new NativeLogin(user, res, res.data().get("refreshToken").stringValue());
+    }
+
+    @Test
+    @DisplayName("Android 로그인과 갱신은 본문으로 교체된 토큰을 전달한다")
+    void androidRotation() {
+      var login = nativeLogin("android");
+      var response =
+          http.post("/api/v1/auth/refresh")
+              .header("X-Client", "android")
+              .json(Map.of("refreshToken", login.refreshToken()))
+              .send();
+      assertThat(response.status()).isEqualTo(200);
+      assertThat(response.data().get("refreshToken").stringValue())
+          .isNotBlank()
+          .isNotEqualTo(login.refreshToken())
+          .isEqualTo(Factories.refreshCookieOf(response));
     }
 
     @Test
     @DisplayName("로그인 응답 data에 refreshToken (쿠키와 같은 값), 쿠키도 그대로")
     void loginBody() {
-      IosLogin login = iosLogin();
+      NativeLogin login = iosLogin();
       List<String> keys = new ArrayList<>();
       login.res().data().propertyNames().forEach(keys::add);
       assertThat(keys).containsExactly("accessToken", "expiresIn", "refreshToken", "user");
@@ -347,7 +367,7 @@ class AuthIT extends IntegrationTestBase {
     @Test
     @DisplayName("쿠키 없이 본문 토큰으로 refresh → 새 refreshToken, 이전 본문 토큰 재사용 → 401 + 전부 폐기")
     void bodyRotation() {
-      IosLogin login = iosLogin();
+      NativeLogin login = iosLogin();
       Res res = refreshWithBody(login.refreshToken(), true);
       assertThat(res.status()).isEqualTo(200);
       String next = res.data().get("refreshToken").stringValue();
@@ -368,8 +388,8 @@ class AuthIT extends IntegrationTestBase {
     @Test
     @DisplayName("쿠키·본문 둘 다 있으면 쿠키 우선")
     void cookieWins() {
-      IosLogin a = iosLogin();
-      IosLogin b = iosLogin();
+      NativeLogin a = iosLogin();
+      NativeLogin b = iosLogin();
       Res res =
           http.post("/api/v1/auth/refresh")
               .header("Cookie", "refresh_token=" + a.refreshToken())
@@ -382,7 +402,7 @@ class AuthIT extends IntegrationTestBase {
     @Test
     @DisplayName("본문 토큰으로 로그아웃 → 그 토큰 폐기")
     void bodyLogout() {
-      IosLogin login = iosLogin();
+      NativeLogin login = iosLogin();
       Res res =
           http.post("/api/v1/auth/logout")
               .bearer(login.res().data().get("accessToken").stringValue())

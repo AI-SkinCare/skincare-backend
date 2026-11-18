@@ -19,7 +19,7 @@ import org.springframework.stereotype.Service;
 public class AuthService {
   private static final Logger log = LoggerFactory.getLogger(AuthService.class);
 
-  /** 로그인·재발급 결과. refreshToken은 쿠키와 (X-Client: ios면) 본문에 실린다 */
+  /** 로그인·재발급 결과. refreshToken은 쿠키와 (X-Client가 ios 또는 android면) 본문에 실린다 */
   public record Session(String accessToken, String refreshToken, UserRow user) {}
 
   /** bcrypt cost 12, {@code $2b$} 접두 (TC-SEC-02) */
