@@ -63,8 +63,8 @@ public record AppProperties(
       }
       if (FixtureScenario.fromCode(ai.fixtureScenario()) == null) {
         problems.add(
-            "AI_FIXTURE_SCENARIO: ok | uncertain | no-concern | no-face | rec-timeout | rec-slow"
-                + " | ai-down");
+            "AI_FIXTURE_SCENARIO: ok | uncertain | no-concern | quality-rejected | no-face"
+                + " | rec-timeout | rec-slow | ai-down");
       }
     }
     if (queue == null || queue.workerConcurrency() != 1) {

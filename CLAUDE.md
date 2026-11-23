@@ -90,7 +90,7 @@ src/test/java/…    *Test(단위), *IT(통합, @Tag("integration")), support/, 
 ## 테스트
 
 - 기능마다 단위 테스트(`*Test`) + 통합 테스트(`*IT`, `IntegrationTestBase` 상속 — 실제 HTTP + PostgreSQL). 테스트 이름에 TC ID를 넣는다: `@DisplayName("TC-ANA-06: 진행 중 분석이 있으면 429 E4004")`. SC-08에 없는 개정 시험은 `(개정)`을 붙인다. 백엔드 TC 목록은 TRD §16.2.
-- 통합 테스트는 `AI_MODE=fixture`, `APP_ENV=test`. 보류·실패·지연은 `X-Fixture-Scenario` 헤더(ok · uncertain · no-concern · no-face · rec-timeout · rec-slow · ai-down). 설정이 다른 경우는 `@TestPropertySource`로 따로 띄운다.
+- 통합 테스트는 `AI_MODE=fixture`, `APP_ENV=test`. 보류·실패·지연은 `X-Fixture-Scenario` 헤더(ok · uncertain · no-concern · quality-rejected · no-face · rec-timeout · rec-slow · ai-down). 설정이 다른 경우는 `@TestPropertySource`로 따로 띄운다.
 - 워커는 자동 시작하지 않는다. 테스트에서 `RecommendationWorker.tick()`을 직접 부르고, 지연(재시도 5초·fixture 1초/60초)은 `FakeSleeper`가 기다리지 않고 기록만 한다(처리 중 상태가 필요하면 `holdSlow()` + 다른 스레드에서 `tick()`). 실제로 기다리는 테스트를 만들지 않는다.
 - fixture JSON(`fixtures/ai/disease-pipeline/`)은 skincare-ai 기록 그대로다. 손으로 고치지 말고, 원본이 바뀌면 복사해 온 뒤 `AiResponseParserTest`(계약 테스트)를 돌린다.
 - "끝났다"고 하기 전에 `./gradlew spotlessCheck test bootJar integrationTest`가 통과해야 한다.

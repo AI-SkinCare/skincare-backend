@@ -189,6 +189,33 @@ class QueueIT extends IntegrationTestBase {
   }
 
   @Test
+  @DisplayName("(개정) 품질 보류(quality-rejected) → WITHHELD quality_rejected, 품질 사유 보존, 재요청 409")
+  void withheldQualityRejected() {
+    LoggedIn me = factories.userWithToken();
+    String id = factories.submitOk(me, "quality-rejected");
+    worker.tick();
+    assertThat(row(id))
+        .containsEntry("status", "WITHHELD")
+        .containsEntry("recommendation_status", "quality_rejected")
+        .containsEntry("error_code", null);
+    assertThat(count("recommendations")).isZero();
+
+    JsonNode data = detail(me, id);
+    assertThat(data.get("status").stringValue()).isEqualTo("WITHHELD");
+    assertThat(data.get("recommendationStatus").stringValue()).isEqualTo("quality_rejected");
+    assertThat(data.get("recommendation").isNull()).isTrue();
+    assertThat(data.get("error").isNull()).isTrue();
+    assertThat(data.get("guidance").toString()).contains("추천 품질 기준");
+    assertThat(data.get("generation").get("qualityIssues").toString())
+        .contains("no_supported_ingredients");
+    assertThat(data.get("generation").get("origin").isNull()).isTrue();
+
+    Res retry = retry(me, id, null);
+    assertThat(retry.status()).isEqualTo(409);
+    assertThat(retry.errorCode()).isEqualTo("E4005");
+  }
+
+  @Test
   @DisplayName("(개정) 보류는 평균 추천 시간(예상 대기)에 넣지 않는다")
   void withheldNotInAverage() {
     LoggedIn first = factories.userWithToken();

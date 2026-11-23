@@ -21,13 +21,14 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * AI 서버가 꺼져 있어도 개발·테스트할 수 있게 하는 클라이언트 (TRD §12.7). 응답은 skincare-ai의 기록({@code
  * fixtures/ai/disease-pipeline/})이고 HttpAiClient와 같은 검증·변환 코드를 거친다 (계약 테스트 겸용). 분류 응답은 각 기록의 {@code
- * disease} 객체다.
+ * disease} 객체다. quality-rejected만 실제 생성 기록이 아니라 skincare-ai가 보류 화면 구현용으로 둔 합성 계약 예시다.
  *
  * <pre>
- * | 시나리오     | 분류                      | 추천                         | health |
- * | ok          | generated의 disease       | generated, 1초 지연           | ok     |
- * | uncertain   | uncertain의 disease       | uncertain (보류, 지연 없음)    | ok     |
- * | no-concern  | no_concern의 disease      | no_concern (보류, 지연 없음)   | ok     |
+ * | 시나리오          | 분류                         | 추천                              | health |
+ * | ok               | generated의 disease          | generated, 1초 지연                | ok     |
+ * | uncertain        | uncertain의 disease          | uncertain (보류, 지연 없음)         | ok     |
+ * | no-concern       | no_concern의 disease         | no_concern (보류, 지연 없음)        | ok     |
+ * | quality-rejected | quality_rejected 예시의 disease | quality_rejected (보류, 1초 지연) | ok     |
  * | no-face     | 422 E2001 (AI에는 아직 없음) | —                          | ok     |
  * | rec-timeout | 정상                      | 504 E3002 즉시               | ok     |
  * | rec-slow    | 정상                      | 60초 지연 후 generated        | ok     |
@@ -45,6 +46,7 @@ public class FixtureAiClient implements AiClient {
   private final byte[] generatedBody;
   private final byte[] uncertainBody;
   private final byte[] noConcernBody;
+  private final byte[] qualityRejectedBody;
 
   /** 받은 추천 요청 (저장한 분류·설문 라벨이 그대로 가는지 확인용). 최근 것만 보관 */
   private final List<DiseaseRecommendRequest> recommendRequests = new ArrayList<>();
@@ -56,6 +58,8 @@ public class FixtureAiClient implements AiClient {
     this.generatedBody = read("fixtures/ai/disease-pipeline/generated.response.json");
     this.uncertainBody = read("fixtures/ai/disease-pipeline/uncertain.response.json");
     this.noConcernBody = read("fixtures/ai/disease-pipeline/no_concern.response.json");
+    this.qualityRejectedBody =
+        read("fixtures/ai/disease-pipeline/quality_rejected.response.example.json");
   }
 
   private static byte[] read(String path) {
@@ -94,6 +98,7 @@ public class FixtureAiClient implements AiClient {
       case AI_DOWN -> throw AiError.of(AiError.Kind.CONNECTION);
       case UNCERTAIN -> AiResponseParser.disease(diseaseOf(uncertainBody));
       case NO_CONCERN -> AiResponseParser.disease(diseaseOf(noConcernBody));
+      case QUALITY_REJECTED -> AiResponseParser.disease(diseaseOf(qualityRejectedBody));
       default -> AiResponseParser.disease(diseaseOf(generatedBody));
     };
   }
@@ -111,6 +116,11 @@ public class FixtureAiClient implements AiClient {
           // 보류는 AI가 GPU 생성 없이 바로 응답한다
           case UNCERTAIN -> uncertainBody;
           case NO_CONCERN -> noConcernBody;
+          // 품질 보류는 생성 후 검사에서도 나오므로 generated처럼 지연을 둔다
+          case QUALITY_REJECTED -> {
+            sleep(REC_DELAY);
+            yield qualityRejectedBody;
+          }
           case REC_SLOW -> {
             sleep(REC_SLOW_DELAY);
             yield generatedBody;

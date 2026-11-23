@@ -25,6 +25,7 @@
 | 2026-11-12 | 사용자 요청: `quality_rejected` 보류, `generation` 출처·품질 정보, 성분 purpose 출처, `avoidIngredients` 설문, 모델 버전 160자. 상세 계약은 [ai-generation-contract.md](ai-generation-contract.md). V3는 기존 행을 보존한다. |
 | 2026-11-13 | 사용자 요청: 선택형 Grad-CAM 참고 영역. 분류 호출에 `include_explanation=true`, 접수·상세 `disease.explanation`, nullable JSONB V4. 이력은 히트맵 제외. 상세 검증·호환 계약은 [gradcam-contract.md](gradcam-contract.md). |
 | 2026-11-17 | 사용자 요청: 분류 후보로 검토할 현재 피부 상태를 선택 설문 `survey.symptomProfile`로 접수한다. [설문 계약](#선택-설문-현재-피부-상태)을 따른다. |
+| 2026-11-23 | §12.7 fixture 시나리오 `quality-rejected` 추가 — skincare-ai의 합성 계약 예시(`quality_rejected.response.example.json`)로 품질 보류 화면을 실제 AI 없이 재현한다. API 계약 변경 없음. |
 | 2026-10-10 | 최초 작성 |
 | 2026-10-10 | [앱 협의] §9 네이티브 앱 리프레시 토큰 본문 전달(`X-Client: ios`) 추가 — SC-03 반영 필요 |
 | 2026-10-10 | §12.7·부록 B: fixture를 `skincare-ai/docs/fixtures/` 실제 출력으로 교체 |
@@ -245,7 +246,7 @@ skincare-backend/
 | `ANALYSIS_DAILY_LIMIT` | 20 | KST 00:00 기준. 스테이징 성능 테스트 때 100 |
 | `LOGIN_RATE_PER_MIN` | 10 | IP당, CF-Connecting-IP 기준 |
 | `TRUST_PROXY` | true | `CF-Connecting-IP`가 없을 때 `X-Forwarded-For` 첫 값을 쓸지 |
-| `AI_FIXTURE_SCENARIO` | ok | ok \| uncertain \| no-concern \| no-face \| rec-timeout \| rec-slow \| ai-down (§12.7) |
+| `AI_FIXTURE_SCENARIO` | ok | ok \| uncertain \| no-concern \| quality-rejected \| no-face \| rec-timeout \| rec-slow \| ai-down (§12.7) |
 | `COOKIE_SECURE` | true | [구현 결정] production에선 항상 true. 로컬 HTTP 개발에서만 false 허용 |
 | `LOG_LEVEL` | info | [구현 결정] error \| warn \| info \| debug |
 | `SEED_PASSWORD` | (개발용 값) | [구현 결정] 시드 계정 공통 비밀번호. production에선 시드 자체가 거부됨 |
@@ -1084,6 +1085,7 @@ Cloudflare HTML 503을 AI의 503 E3003으로 읽으면 "요청이 많아요"가 
 | `ok` (기본) | `generated.response.json`의 `disease` (아토피 0.9) | `generated.response.json`, **1초 지연** | ok |
 | `uncertain` | `uncertain.response.json`의 `disease` (아토피 0.55, `uncertain: true`) | `uncertain.response.json` (보류, 지연 없음) | ok |
 | `no-concern` | `no_concern.response.json`의 `disease` (정상 0.9) | `no_concern.response.json` (보류, 지연 없음) | ok |
+| `quality-rejected` | `quality_rejected.response.example.json`의 `disease` (아토피 0.9) | 같은 파일 (`quality_rejected` 보류, `quality_issues` 보존, **1초 지연**). 실제 생성 기록이 아닌 skincare-ai 합성 계약 예시이며 `generation_origin`이 없어 출처는 `null` | ok |
 | `no-face` | 422 E2001 (AI에는 아직 없음 — 오류 경로 확인용) | — | ok |
 | `rec-timeout` | 정상 | 504 E3002 즉시 | ok |
 | `rec-slow` | 정상 | **60초 지연** 후 generated (대기열 테스트) | ok |
@@ -1309,6 +1311,7 @@ nginx·터널 뒤라 모든 요청의 출발 IP가 같다. **`CF-Connecting-IP` 
 | TC-ANA-10 | AI 401 → 클라이언트 503 E3001, ERROR 로그 | 단위(매퍼·분류) + 통합(`AI_MODE=real`, 로컬 가짜 AI 서버) |
 | (개정) | 분류 불확실(`uncertain`) → WITHHELD, `recommendationStatus: uncertain`, `recommendation: null`, guidance, 추천 행 없음, 재요청 409 | 통합 |
 | (개정) | 정상·고민 없음(`no-concern`) → WITHHELD `no_concern` | 통합 |
+| (개정) | 품질 보류(`quality-rejected`) → WITHHELD `quality_rejected`, `generation.qualityIssues` 보존, 출처 `null`, 재요청 409 | 단위 + 통합 |
 | (개정) | 추천 요청 = 저장한 분류 JSON 전체(6개 확률 그대로) + 설문(고민 라벨, `selfReportedConcerns`), `metrics` 없음 | 단위 + 통합 (FixtureAiClient가 받은 요청 기록) |
 | (개정) | AI 503 E3001(분류기 비활성) → 503 E3001 | 단위(매퍼) |
 | TC-HIS-01·03 | 목록 20/5, 최신순 / 삭제 후 목록에서 제외 | 통합 (시드 또는 팩토리) |
@@ -1398,7 +1401,7 @@ docker-compose.yml
 - iOS 시뮬레이터: `http://localhost:8080/api/v1`.
 - 실기기: 같은 Wi-Fi에서 Mac의 LAN IP(`http://192.168.x.x:8080/api/v1`). 평문 HTTP라 앱 Info.plist에 ATS 예외가 필요하다(앱 쪽 설정). 또는 임시 터널(`cloudflared tunnel --url http://localhost:8080`)의 HTTPS 주소를 쓴다.
 - 로컬 HTTP로 붙을 때는 `Secure` 쿠키가 전달되지 않으므로 `COOKIE_SECURE=false` (터널 HTTPS면 true 그대로). iOS 앱은 본문 `refreshToken`(§9.1)을 쓰므로 이 설정과 관계없이 refresh가 동작한다.
-- 개발 중 보류·실패 재현은 앱이 `X-Fixture-Scenario` 헤더를 붙이면 된다(`uncertain`·`no-concern`·`rec-timeout`·`ai-down` 등, production에선 무시).
+- 개발 중 보류·실패 재현은 앱이 `X-Fixture-Scenario` 헤더를 붙이면 된다(`uncertain`·`no-concern`·`quality-rejected`·`rec-timeout`·`ai-down` 등, production에선 무시).
 
 ### 17.4 AI 서버 연동 절차 (김우주 PC가 켜져 있을 때)
 

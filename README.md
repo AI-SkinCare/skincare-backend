@@ -59,7 +59,7 @@ cp .env.example .env             # AI_MODE=fixture가 기본 (AI 서버 없이 �
 
 - API: `http://localhost:8080/api/v1`, Swagger JSON: `/api/docs-json` (앱 타입 생성용)
 - iOS 시뮬레이터는 `localhost`, 실기기는 같은 Wi-Fi에서 Mac의 LAN IP로 접속 (모든 인터페이스에서 listen)
-- AI 서버 대신 고정 응답: `AI_MODE=fixture`, 요청마다 `X-Fixture-Scenario: ok | uncertain | no-concern | no-face | rec-timeout | rec-slow | ai-down` (production에선 무시). 응답은 skincare-ai의 기록(`src/main/resources/fixtures/ai/disease-pipeline/`)
+- AI 서버 대신 고정 응답: `AI_MODE=fixture`, 요청마다 `X-Fixture-Scenario: ok | uncertain | no-concern | quality-rejected | no-face | rec-timeout | rec-slow | ai-down` (production에선 무시). 응답은 skincare-ai의 기록(`src/main/resources/fixtures/ai/disease-pipeline/`)
 
 ## 배포
 정도희 자택 서버에서 Docker Compose(`web` nginx · `backend` · `db` · `cloudflared`)로 운영합니다(배포 위치는 개정 수행계획서에서 팀 확정 사항). 외부에 여는 포트는 없고 Cloudflare Tunnel로만 들어옵니다.

@@ -21,7 +21,7 @@
 | `Authorization` | 인증이 필요한 API | `Bearer <accessToken>` |
 | `X-Client` | **모든 요청** | `ios` |
 | `X-Request-Id` | 모든 요청 (권장) | 요청마다 새로 생성. `^[A-Za-z0-9._-]{1,64}$` (예: UUID). 응답 헤더에 그대로 돌아오고 서버·AI 로그를 이 값으로 찾는다 |
-| `X-Fixture-Scenario` | 개발 서버에서 보류·실패 재현할 때만 | `ok` · `uncertain` · `no-concern` · `no-face` · `rec-timeout` · `rec-slow` · `ai-down` (production은 무시) |
+| `X-Fixture-Scenario` | 개발 서버에서 보류·실패 재현할 때만 | `ok` · `uncertain` · `no-concern` · `quality-rejected` · `no-face` · `rec-timeout` · `rec-slow` · `ai-down` (production은 무시) |
 
 `Origin`을 보내지 않으므로 CORS는 신경 쓰지 않아도 됩니다. AI 서버의 내부 토큰은 앱에 넣지 않습니다 — 앱은 백엔드만 호출합니다.
 
@@ -168,11 +168,12 @@ FAILED 분석의 `error.code`는 E3001(AI 서버 점검·장시간 대기)·E300
   | (없음)·`ok` | 아토피 0.9 분류 → 약 1초 뒤 `COMPLETED` (실제 Qwen 생성 기록, `purpose: null` 항목 포함) |
   | `uncertain` | 아토피 0.55(`uncertain: true`) → `WITHHELD` / `uncertain` |
   | `no-concern` | 정상 0.9 → `WITHHELD` / `no_concern` |
+  | `quality-rejected` | 아토피 0.9 → 약 1초 뒤 `WITHHELD` / `quality_rejected` (`generation.qualityIssues` 있음, `origin`은 `null`) |
   | `rec-timeout` | `FAILED` E3002 → 헤더 없이 재요청하면 `COMPLETED` |
   | `rec-slow` | 60초 뒤 `COMPLETED` (대기·생성 중 화면) |
   | `no-face` | 제출 422 E2001 |
   | `ai-down` | 제출 503 E3001 |
 
-  fixture의 분류는 시험용 JSON이라 `modelVersion`이 `quality_test_fixture_not_a_patient_prediction`입니다.
+  fixture의 분류는 시험용 JSON이라 `modelVersion`이 `quality_test_fixture_not_a_patient_prediction`입니다(`quality-rejected`는 `synthetic_contract_example`).
 - 테스트 계정: `test01`~`test40@skincare.dev` (비밀번호는 담당자에게 1:1로). `test01`에는 완료 분석 25건이 있어 이력 화면 확인용입니다.
 - 타입 생성: `GET /api/docs-json`(OpenAPI 3.0)을 swift-openapi-generator 등에 넣습니다. multipart 제출의 `survey`는 문자열 필드라 직접 JSON 인코딩해 넣습니다. `recommendation`·`error`·`recommendationStatus`·`queuePosition`·`estimatedWaitSec`·`completedAt`·`ingredients[].purpose`는 Optional입니다.

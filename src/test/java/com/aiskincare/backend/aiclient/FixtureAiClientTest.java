@@ -68,6 +68,23 @@ class FixtureAiClientTest {
   }
 
   @Test
+  @DisplayName("(개정) quality-rejected: 아토피 0.9 분류, 추천 quality_rejected 보류(1초 지연)·품질 사유 보존")
+  void qualityRejected() {
+    var ai = ai(FixtureScenario.OK);
+    var disease = ai.classify(INPUT, ctx(FixtureScenario.QUALITY_REJECTED));
+    assertThat(disease.label()).isEqualTo(DiseaseLabel.ATOPIC);
+    assertThat(disease.uncertain()).isFalse();
+    var result = ai.recommend(REQUEST, ctx(FixtureScenario.QUALITY_REJECTED));
+    assertThat(result.status()).isEqualTo(RecommendationStatus.QUALITY_REJECTED);
+    assertThat(result.recommendation()).isNull();
+    assertThat(result.guidance()).isNotEmpty();
+    assertThat(result.generation().qualityIssues()).containsExactly("no_supported_ingredients");
+    // 예시에 출처가 없으므로 모델 생성으로 추정하지 않는다
+    assertThat(result.generation().origin()).isNull();
+    assertThat(sleeper.calls()).containsExactly(FixtureAiClient.REC_DELAY);
+  }
+
+  @Test
   @DisplayName("no-face: 분류 422 E2001")
   void noFace() {
     AiError error =
