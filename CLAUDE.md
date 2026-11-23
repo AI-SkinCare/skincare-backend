@@ -4,7 +4,9 @@
 
 10/16 **개정 수행계획서(2026-10-15)**를 반영했다: 회귀 지표(수분·탄력·색소침착·모공) 측정·ROI·점수·추이는 범위에서 빠졌고, 분석 API·DB·AI 연동이 분류 → 추천 2단계로 바뀌었다(호환이 깨지는 변경, 앱 DTO도 함께 갱신). 개정안은 Swift iOS 앱 → Spring Boot → FastAPI 구성을 채택했다(SC-0x 팀 문서에는 아직 React 웹·NestJS로 적혀 있음). NestJS 구현은 `archive/nestjs` 브랜치에 있고(개정 전 API) 참고만 한다.
 
-클라이언트는 **Swift iOS 앱**이다. 네이티브 앱용 리프레시 토큰 본문 전달(`X-Client: ios`, TRD §9.1)만 **[앱 협의]**로 더했다. 앱은 `Origin`을 보내지 않아 CORS와 무관하다.
+클라이언트는 **Swift iOS 앱과 Android 앱**(11/18 추가)이다. 네이티브 앱용 리프레시 토큰 본문 전달(`X-Client: ios`·`android`, TRD §9.1)만 **[앱 협의]**로 더했다. 앱은 `Origin`을 보내지 않아 CORS와 무관하다.
+
+10/16 이후 추가 계약(모두 기존 필드 유지): 11/12 `quality_rejected` 보류·`generation` 출처·`avoidIngredients`(V3), 11/13 Grad-CAM `disease.explanation`(V4), 11/17 `survey.symptomProfile`, 11/18 Android. 앱에 주는 API 전체·변경 이력은 `docs/api변경사항.md`(앱 레포 `docs/new_common/`에 사본)다. API가 바뀌면 이 문서도 함께 고친다.
 
 ## 먼저 읽을 것
 
@@ -14,8 +16,9 @@
   - 개정 수행계획서: `skincare-ai/docs/project/09-revised-project-plan.md` (같은 폴더에 원본 docx, 브랜치 `feat/rec-sllm-v2` 커밋 `d09e597`). 부록 A가 AI 계약, 부록 B가 앱·백엔드 계약이다. 이 레포에는 두지 않는다.
   - SC-01 요구사항 ~ SC-08 테스트 계획: `skincare-ai/docs/project/`. 회귀 지표 관련 내용은 개정안이 대체한다.
 - 로컬 참고용 클론 (읽기 전용으로 쓰고 이 레포에 코드를 복사하지 않는다):
-  - `../AI` — skincare-ai, 개발 브랜치 `feat/rec-sllm-v2`. **분류 연동은 원격 커밋 `d09e597`부터** 있다 — 작업 트리가 뒤처져 있으면 `git -C ../AI fetch` 후 `git -C ../AI show origin/feat/rec-sllm-v2:<경로>`로 읽는다. AI 스키마 `server/schemas.py`(`DiseasePrediction`·`DiseaseRecommendRequest`), 분류→고민 매핑 `configs/disease_mapping.yaml`, fixture 원본 `docs/fixtures/disease-pipeline/`, 실행 안내 `docs/disease-pipeline.md`
-  - `../AI_FE` — skincare-frontend (Swift 앱, 정도희). 아직 개정 전 계약 기준
+  - `../AI` — skincare-ai, 최신 개발 브랜치 `fix/ai-response-flow`(`feat/rec-sllm-v2` 포함, 11/23 기준). 작업 트리가 뒤처져 있으면 `git -C ../AI fetch` 후 `git -C ../AI show origin/fix/ai-response-flow:<경로>`로 읽는다. AI 스키마 `server/schemas.py`(`DiseasePrediction`·`DiseaseRecommendRequest`), 분류→고민 매핑 `configs/disease_mapping.yaml`, fixture 원본 `docs/fixtures/disease-pipeline/`, 실행 안내 `docs/disease-pipeline.md`
+  - `../AI_FE` — skincare-frontend (iOS 앱 정도희, `Android/`). 11월 계약은 `fix/ai-response-flow`에 있고, `chore/ios-project-setup`(얼굴 가이드·TestFlight)과 아직 갈라져 있다(11/23 기준)
+- 운영: `https://skincare.doi2.my` (정도희 Mac mini, Cloudflare 터널, AI는 Tailscale로 김우주 PC). develop 푸시 자동 배포는 `ci/deploy-tailscale` 브랜치(`docs/deploy.md`)에 있고 11/23 기준 develop에 머지되지 않았다
 - 이 레포 브랜치: `main`(배포·발표, **건드리지 않음**) ← `develop`(백엔드 개발 브랜치). 작업은 `develop`에서 하고 `develop`에 푸시한다 (10/12 이현승 결정).
 - 진행 상황은 TRD §18.1 체크리스트로 관리한다. 항목을 끝내면 체크한다.
 
@@ -53,11 +56,11 @@ src/main/java/com/aiskincare/backend/
   aiclient/        AiClient → HttpAiClient(real) / FixtureAiClient(fixture), 오류 매퍼, 응답 검증, 설문·분류 → AI 요청
   system/          AI 헬스체크(30초), GET /system/status
   seed/            ./gradlew seed
-src/main/resources/ application.yml, db/migration/(V1·V2), fixtures/ai/disease-pipeline/
+src/main/resources/ application.yml, db/migration/(V1–V4), fixtures/ai/disease-pipeline/
 src/test/java/…    *Test(단위), *IT(통합, @Tag("integration")), support/, tools/(SmokeFlow·LoadImage)
 ```
 
-흐름: `POST /analyses` → (요청 안에서) AI `/infer/disease` 분류 → 저장(`QUEUED`) → 202 → 워커가 1초마다 `QUEUED` 1건 획득(`GENERATING`) → AI `/infer/disease-recommend` → `COMPLETED`(generated) / `WITHHELD`(uncertain·no_concern) / `FAILED`. 앱은 `GET /analyses/{id}`를 폴링한다. POST·재요청·GET 응답은 같은 형태다.
+흐름: `POST /analyses` → (요청 안에서) AI `/infer/disease` 분류 → 저장(`QUEUED`) → 202 → 워커가 1초마다 `QUEUED` 1건 획득(`GENERATING`) → AI `/infer/disease-recommend` → `COMPLETED`(generated) / `WITHHELD`(uncertain·no_concern·quality_rejected) / `FAILED`. 앱은 `GET /analyses/{id}`를 폴링한다. POST·재요청·GET 응답은 같은 형태다.
 
 ## 절대 규칙
 
@@ -67,7 +70,7 @@ src/test/java/…    *Test(단위), *IT(통합, @Tag("integration")), support/, 
 4. **IDOR**: 분석 조회·삭제·재요청 쿼리는 전부 `user_id` 조건. 없거나 남의 것이면 똑같이 404 E4003. ULID 형식이 아닌 id도 404.
 5. **AI 오류는 반드시 변환한다** (TRD §12.5). AI 401 → 클라이언트에 **503 E3001**(401을 내보내면 앱이 로그아웃시킴). 워커는 연결 오류·503만 5초 후 1회 재시도. **504·422·우리 쪽 타임아웃은 재시도 금지**(AI가 GPU 생성을 계속하므로 중복 생성). 본문에 `error.code`가 없는 5xx(Cloudflare HTML)는 연결 실패로 본다.
 6. **분류 JSON은 반올림하지 않고 저장하고, 추천 호출·재시도 때 그대로 다시 보낸다.** 라벨만 넘기지 않고 6개 확률도 보낸다(AI가 합·최고 점수 일치를 검증). 재시도는 저장한 분류를 쓴다 — 이미지가 없으므로 분류를 다시 하지 않는다.
-7. **분류→고민 매핑과 보류 판단(uncertain·no_concern)을 백엔드에 복제하지 않는다.** `recommendationStatus`는 AI 응답 값 그대로 저장한다. 불확실한 분류도 일단 `QUEUED`로 접수하고 워커가 받은 응답으로 `WITHHELD`를 확정한다. 추천 요청에 `metrics`를 넣지 않는다.
+7. **분류→고민 매핑과 보류 판단(uncertain·no_concern·quality_rejected)을 백엔드에 복제하지 않는다.** `recommendationStatus`는 AI 응답 값 그대로 저장한다. 불확실한 분류도 일단 `QUEUED`로 접수하고 워커가 받은 응답으로 `WITHHELD`를 확정한다. 추천 요청에 `metrics`를 넣지 않는다.
 8. **DB**: ORM 없이 `JdbcClient` + SQL. 스키마 변경은 Flyway 마이그레이션으로만(자동 생성 금지, 적용된 V 파일 수정 금지).
 9. **큐는 PostgreSQL**(`FOR UPDATE SKIP LOCKED`). Redis·Bull 추가 금지. 워커 동시성은 1.
 10. **API 계약(경로·필드·열거형·에러 코드·상태 코드)과 DDL을 마음대로 바꾸지 않는다.** 기준은 개정 수행계획서 부록 B와 TRD §10–§13이다(10/16 반영). 바꿔야 할 것 같으면 구현을 멈추고 사용자에게 알린다 — 명세 변경은 문서 먼저(TRD §18.3), 앱 DTO와 예시 JSON도 함께.
@@ -116,7 +119,7 @@ src/test/java/…    *Test(단위), *IT(통합, @Tag("integration")), support/, 
 - 평균 추천 시간(예상 대기)은 `COMPLETED`만으로 계산한다 — 보류는 GPU 생성 없이 바로 끝나 평균을 낮춘다.
 - AI `/health`는 `status: ok`여도 `disease_loaded`가 false면 비가용으로 본다(분류기 꺼짐 → `/infer/disease` 503 E3001). fixture 응답의 분류 `model_version`은 47자라 길이 제한은 80자다.
 - 리프레시 쿠키 `Path=/api/v1/auth`. 지울 때도 같은 Path. 교체된 토큰이 다시 오면 그 사용자 토큰 전부 폐기.
-- `X-Client: ios`면 login·refresh 응답 `data`에 `refreshToken`을 더한다(쿠키도 그대로 보냄). refresh·logout은 쿠키가 없으면 본문 `{ refreshToken }`을 받고, 둘 다 있으면 **쿠키 우선**. 본문 토큰도 교체·재사용 감지·해시 저장 규칙이 똑같다. 허용 `X-Client` 값은 `auth/ClientType` 한 곳에만 (Android는 나중에 `android` 추가).
+- `X-Client: ios`·`android`면 login·refresh 응답 `data`에 `refreshToken`을 더한다(쿠키도 그대로 보냄). refresh·logout은 쿠키가 없으면 본문 `{ refreshToken }`을 받고, 둘 다 있으면 **쿠키 우선**. 본문 토큰도 교체·재사용 감지·해시 저장 규칙이 똑같다. 허용 `X-Client` 값은 `auth/ClientType` 한 곳에만 (`ios`·`android`).
 - 로그인 실패는 E1003, 토큰 없음·만료·위조는 E1001. 앱은 E1001에서만 refresh하므로 섞지 않는다.
 - 로컬 HTTP(시뮬레이터·실기기)에서는 `Secure` 쿠키가 전달되지 않는다 → 개발 중엔 `COOKIE_SECURE=false`. production은 항상 true. (iOS 앱은 본문 `refreshToken`을 쓰므로 이 설정과 무관하게 refresh가 된다.)
 - 클라이언트 IP는 `CF-Connecting-IP` → (`TRUST_PROXY`면) `X-Forwarded-For` 첫 값 → 연결 주소 (`ClientIp`). 모든 요청이 nginx·터널에서 와서 연결 주소만 보면 전원이 같은 IP다.
@@ -127,4 +130,4 @@ src/test/java/…    *Test(단위), *IT(통합, @Tag("integration")), support/, 
 - JWT 비밀키는 32자 이상(HS256 키 256비트), 액세스·리프레시가 달라야 기동한다.
 - 워커가 결과를 저장할 때 `UPDATE … WHERE id=$1 AND status='GENERATING'`이 0행이면(탈퇴·삭제됨) 결과를 버린다. FK 오류로 500을 내지 않는다.
 - POST·retry의 `X-Fixture-Scenario`는 워커까지 전달돼야 한다 → 분석 id별 메모리 맵. production에선 헤더를 무시.
-- E2001(얼굴 미검출)은 AI에 아직 없다. 매핑과 fixture `no-face`는 오류 경로 확인용으로만 남아 있다.
+- E2001(얼굴 미검출)은 AI에 아직 없다(iOS 앱이 촬영 단계에서 얼굴 가이드로 거른다). 매핑과 fixture `no-face`는 오류 경로 확인용으로만 남아 있다.

@@ -1480,8 +1480,16 @@ docker-compose.yml
 - [x] 워커 COMPLETED / WITHHELD, fixture `disease-pipeline/` 응답 + 시나리오 `uncertain`·`no-concern`, 시드
 - [x] 단위 144개·통합 86개(§16.2), 스모크·k6·지연 집계 SQL 갱신 — jar + fixture로 스모크 31개 항목 통과(ok·uncertain) (10/16)
 - [ ] 실제 AI(DenseNet + Qwen2.5 v2)와 `./gradlew aiContractTest` — 김우주 PC, 하루 전 요청
-- [ ] 앱(Swift) DTO·화면 갱신 — 정도희 (부록 B 계약, [ios-integration.md](ios-integration.md))
+- [x] 앱(Swift) DTO·화면 갱신 — 정도희 (부록 B 계약, [ios-integration.md](ios-integration.md)) — 10/17 반영, 11/17 Xcode 16.2 빌드·로컬 백엔드 연결 확인
 - [ ] SC-03·SC-04·SC-08 문서 개정 — 팀 (`skincare-ai`에 PR)
+
+**Phase 10 — 추가 계약과 배포 (11/12–) [사용자 요청]**
+- [x] 11/12 `quality_rejected`·`generation`·`avoidIngredients`(V3), 11/13 Grad-CAM(V4), 11/17 `symptomProfile`, 11/18 Android, 11/19 수면 시간 검증 — 김우주 (PR #1·#4)
+- [x] 로컬 포트를 앱 기준 8080으로 (11/17)
+- [x] fixture 시나리오 `quality-rejected`, 앱용 `docs/api변경사항.md` 최신화 (11/23) — 단위 166개·통합 95개
+- [ ] develop 푸시 자동 배포(`ci/deploy-tailscale`, `docs/deploy.md`) develop 머지 — 정도희
+- [ ] 운영 `skincare.doi2.my` 복구 확인 — 11/23 Cloudflare 1033(터널 끊김)
+- [ ] 실제 AI 연결 상태에서 위 Phase 7 스테이징 실측과 Phase 9 `aiContractTest`
 
 ### 18.2 완료 기준 (Definition of Done, SC-06 §4.3)
 
