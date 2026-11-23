@@ -156,7 +156,7 @@
     "probabilities": { "건선": 0.02, "아토피": 0.9, "여드름": 0.02, "정상": 0.02, "주사": 0.02, "지루": 0.02 },
     "modelVersion": "densenet121_s2_3ea9506", "inferenceMs": 45,
     "explanation": {
-      "available": true, "method": "grad_cam", "targetLabel": "atopic", "modelVersion": "densenet121_s2_3ea9506",
+      "available": true, "method": "grad_cam", "targetLabel": "아토피", "modelVersion": "densenet121_s2_3ea9506",
       "heatmapPngBase64": "iVBORw0KGgo…", "interpretation": "…", "unavailableReason": null
     }
   },
@@ -232,7 +232,7 @@
 |---|---|
 | `available` | `false`면 시각화를 표시하지 않거나 생성 불가 안내만 표시 |
 | `method` | `grad_cam` |
-| `targetLabel`, `modelVersion` | 원래 분류의 `labelEn`·`modelVersion`과 같음 (다르면 서버가 설명을 버림) |
+| `targetLabel`, `modelVersion` | 원래 분류의 `label`(한글, 예: `아토피`)·`modelVersion`과 같음 (다르면 서버가 설명을 버림) |
 | `heatmapPngBase64` | 256×256 8-bit grayscale PNG. 원본 얼굴 픽셀·overlay는 없음 |
 | `interpretation` | AI가 준 해석 문장 |
 | `unavailableReason` | `available=false`일 때 사유 |
