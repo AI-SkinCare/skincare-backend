@@ -4,7 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 public record SystemStatusResponse(
     @Schema(example = "true") boolean aiAvailable,
-    @Schema(example = "3", description = "queued 건수") long queueLength,
+    @Schema(example = "3", description = "QUEUED 건수") long queueLength,
     @Schema(example = "165", description = "round(queueLength × 최근 평균 추천ms / 1000)")
         long estimatedWaitSec,
     @Schema(
