@@ -67,11 +67,31 @@ public final class AiModels {
   public record DiseaseRecommendRequest(Map<String, Object> disease, Map<String, Object> survey) {}
 
   public record Ingredient(
-      String name, String purpose, int priority, String purposeSource, String purposeStatus) {
+      String name,
+      String purpose,
+      int priority,
+      String purposeSource,
+      String purposeStatus,
+      IngredientEvidence evidence) {
     public Ingredient(String name, String purpose, int priority) {
-      this(name, purpose, priority, null, null);
+      this(name, purpose, priority, null, null, null);
+    }
+
+    public Ingredient(
+        String name, String purpose, int priority, String purposeSource, String purposeStatus) {
+      this(name, purpose, priority, purposeSource, purposeStatus, null);
     }
   }
+
+  public record IngredientEvidence(
+      String claimId,
+      String version,
+      String effect,
+      String limitations,
+      List<String> usageConditions,
+      List<EvidenceSource> sources) {}
+
+  public record EvidenceSource(String title, String url, String kind, String summary) {}
 
   /** AI provenance; missing legacy fields remain unknown, never inferred as model success. */
   public record Generation(

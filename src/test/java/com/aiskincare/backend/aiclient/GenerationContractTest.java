@@ -38,6 +38,75 @@ class GenerationContractTest {
   }
 
   @Test
+  void evidenceIsSavedOnlyForItsIngredientAndGeneration() throws Exception {
+    var body = generated();
+    var rec = (ObjectNode) body.get("recommendation");
+    var name = rec.path("ingredients").get(0).path("name").asString();
+    rec.put("evidence_status", "source_linked");
+    rec.put("evidence_version", "catalog-v1");
+    var bindings = rec.putArray("ingredient_evidence");
+    var binding = bindings.addObject();
+    binding
+        .put("ingredient", name)
+        .put("claim_id", "example")
+        .put("effect", "제형 연구 결과")
+        .put("limitations", "단일 성분 효과는 분리할 수 없음");
+    binding.putArray("usage_conditions").add("제품 표시 확인");
+    var source =
+        binding
+            .putArray("sources")
+            .addObject()
+            .put("title", "원문")
+            .put("url", "https://pubmed.ncbi.nlm.nih.gov/33984185/");
+    var ingredient =
+        AiResponseParser.diseaseRecommend(body).recommendation().ingredients().getFirst();
+    assertThat(ingredient.evidence().version()).isEqualTo("catalog-v1");
+    assertThat(ingredient.evidence().usageConditions()).containsExactly("제품 표시 확인");
+    assertThat(ingredient.evidence().sources().getFirst().title()).isEqualTo("원문");
+    assertThat(JSON.readValue(JSON.writeValueAsString(ingredient), AiModels.Ingredient.class))
+        .isEqualTo(ingredient);
+    binding.put("ingredient", name + " (다른 성분)");
+    assertThat(
+            AiResponseParser.diseaseRecommend(body)
+                .recommendation()
+                .ingredients()
+                .getFirst()
+                .evidence())
+        .isNull();
+    binding.put("ingredient", name);
+    source.put("url", "file:///private");
+    assertThat(
+            AiResponseParser.diseaseRecommend(body)
+                .recommendation()
+                .ingredients()
+                .getFirst()
+                .evidence())
+        .isNull();
+    source.put("url", "https://example.org/source");
+    bindings.add(binding.deepCopy());
+    assertThat(
+            AiResponseParser.diseaseRecommend(body)
+                .recommendation()
+                .ingredients()
+                .getFirst()
+                .evidence())
+        .isNull();
+    bindings.remove(1);
+    rec.remove("evidence_status");
+    assertThat(
+            AiResponseParser.diseaseRecommend(body)
+                .recommendation()
+                .ingredients()
+                .getFirst()
+                .evidence())
+        .isNull();
+    assertThat(
+            JSON.readValue("{\"name\":\"legacy\",\"priority\":1}", AiModels.Ingredient.class)
+                .evidence())
+        .isNull();
+  }
+
+  @Test
   void sourceCardsAndLongVersionSurviveParsing() throws Exception {
     var body = generated();
     var rec = (ObjectNode) body.get("recommendation");
