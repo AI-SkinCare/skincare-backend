@@ -108,6 +108,24 @@ class AiContractIT {
     assertThat(result.status()).isNotNull();
   }
 
+  @Test
+  @EnabledIfEnvironmentVariable(named = "SIDE_DINO_CONTRACT", matches = "1")
+  void sideModelRoundTrip() {
+    var ai = client(TOKEN);
+    assertThat(ai.health().sideDinoLoaded()).isTrue();
+    var input = new ClassifyInput(TestImages.png(1080, 1440), "image/png", "side");
+    var result = ai.classify(input, CTX);
+    assertThat(result.modelVersion()).startsWith("dinov2_linear_");
+    assertThat(result.probabilities()).hasSize(6);
+    assertThat(
+            ai.recommend(
+                    AiTransform.buildRecommendRequest(
+                        result, survey(SkinType.DRY, List.of(Concern.DRYNESS))),
+                    CTX)
+                .status())
+        .isNotNull();
+  }
+
   static Stream<Arguments> labels() {
     Concern[] concerns = Concern.values();
     SkinType[] types = SkinType.values();

@@ -20,12 +20,13 @@ import org.springframework.stereotype.Service;
 public class AiHealthService {
   private static final Logger log = LoggerFactory.getLogger(AiHealthService.class);
 
-  public record Snapshot(boolean aiAvailable, Instant checkedAt) {}
+  public record Snapshot(boolean aiAvailable, Instant checkedAt, boolean sideCaptureAvailable) {}
 
   private final AiClient ai;
   private final AppProperties props;
   private final TaskScheduler scheduler;
   private volatile boolean available = false;
+  private volatile boolean sideLoaded = false;
   private volatile Instant checkedAt = null;
   private volatile boolean started = false;
   private final AtomicReference<CompletableFuture<Boolean>> inFlight = new AtomicReference<>();
@@ -41,7 +42,7 @@ public class AiHealthService {
   }
 
   public Snapshot snapshot() {
-    return new Snapshot(available, checkedAt);
+    return new Snapshot(available, checkedAt, available && sideLoaded);
   }
 
   /** 동시에 여러 번 불려도 GET /health는 한 번만 */
@@ -79,6 +80,7 @@ public class AiHealthService {
     try {
       var health = ai.health();
       ok = "ok".equals(health.status()) && health.diseaseLoaded();
+      sideLoaded = ok && health.sideDinoLoaded();
       if (!"ok".equals(health.status())) reason = "status:" + health.status();
       else if (!health.diseaseLoaded()) reason = "disease_not_loaded";
     } catch (RuntimeException e) {

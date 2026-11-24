@@ -141,9 +141,14 @@ public class AnalysesService {
   /** AI 분류 (TRD §12.5 분류 열): 연결 오류만 즉시 1회 재시도. 성공·실패와 관계없이 끝나면 이미지 버퍼 참조를 끊는다. */
   private DiseaseResult classify(Submission submission, AiCallContext ctx) {
     try {
+      String view = submission.survey().captureView();
+      if ("side".equals(view) && !aiHealth.snapshot().sideCaptureAvailable()) {
+        throw ApiException.withMessage(ErrorCode.E3001, "측면 분석 모델이 아직 준비되지 않았어요.");
+      }
       for (int attempt = 1; ; attempt++) {
         try {
-          return ai.classify(new ClassifyInput(submission.image(), submission.mimeType()), ctx);
+          return ai.classify(
+              new ClassifyInput(submission.image(), submission.mimeType(), view), ctx);
         } catch (AiError error) {
           if (attempt == 1 && AiErrorMapper.classifyRetryable(error)) continue;
           throw classifyException(error);

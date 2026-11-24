@@ -96,7 +96,7 @@ public class HttpAiClient implements AiClient {
         send(
             classifyClient,
             HttpMethod.POST,
-            "/infer/disease",
+            "side".equals(input.captureView()) ? "/infer/disease/side" : "/infer/disease",
             authHeaders(ctx.requestId()),
             parts,
             MediaType.MULTIPART_FORM_DATA);

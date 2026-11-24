@@ -24,7 +24,12 @@ public record NormalizedSurvey(
     @Schema(description = "피할 성분. 최대 30개, 각 1–100자") List<String> avoidIngredients,
     @JsonInclude(JsonInclude.Include.NON_NULL)
         @Schema(description = "현재 분석에만 기록하는 자가 응답. 기존 분석에는 생략")
-        SymptomProfile symptomProfile) {
+        SymptomProfile symptomProfile,
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+        @Schema(
+            description = "촬영 시 선택한 구도",
+            allowableValues = {"front", "side"})
+        String captureView) {
 
   public NormalizedSurvey(
       Gender gender,
@@ -50,6 +55,7 @@ public record NormalizedSurvey(
         currentProducts,
         note,
         avoidIngredients,
+        null,
         null);
   }
 

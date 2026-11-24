@@ -207,6 +207,8 @@ class HttpAiClientTest {
     assertThat(body).contains("name=\"image\"; filename=\"image.png\"");
     assertThat(body).contains("Content-Type: image/png");
     assertThat(body).doesNotContain("device_type");
+    caught(() -> client(url).classify(new ClassifyInput(new byte[4], "image/png", "side"), CTX));
+    assertThat(seen.get(1).path()).isEqualTo("/infer/disease/side");
   }
 
   @Test

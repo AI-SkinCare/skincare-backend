@@ -145,6 +145,15 @@ public final class SurveyParser {
         }
     }
     SymptomProfile symptomProfile = parseSymptomProfile(root.get("symptomProfile"), errors);
+    String captureView = null;
+    JsonNode angle = root.get("captureView");
+    if (present(angle)) {
+      if (angle.isString() && Set.of("front", "side").contains(angle.stringValue())) {
+        captureView = angle.stringValue();
+      } else {
+        errors.add(issue("captureView", "invalid_value"));
+      }
+    }
     if (!errors.isEmpty()) return new Result(null, errors);
     return new Result(
         new NormalizedSurvey(
@@ -159,7 +168,8 @@ public final class SurveyParser {
             products,
             note,
             avoidIngredients,
-            symptomProfile),
+            symptomProfile,
+            captureView),
         List.of());
   }
 

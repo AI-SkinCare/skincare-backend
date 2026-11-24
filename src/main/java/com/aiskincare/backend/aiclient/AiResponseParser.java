@@ -249,7 +249,9 @@ public final class AiResponseParser {
     c.throwIfInvalid();
     JsonNode diseaseLoaded = root.get("disease_loaded");
     return new AiHealth(
-        status, diseaseLoaded != null && diseaseLoaded.isBoolean() && diseaseLoaded.booleanValue());
+        status,
+        diseaseLoaded != null && diseaseLoaded.isBoolean() && diseaseLoaded.booleanValue(),
+        root.path("side_dino_loaded").isBoolean() && root.path("side_dino_loaded").booleanValue());
   }
 
   /** 필드마다 확인하며 위반을 모은다 */

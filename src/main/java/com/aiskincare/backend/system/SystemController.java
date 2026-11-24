@@ -37,6 +37,7 @@ public class SystemController {
     return ApiEnvelope.ok(
         new SystemStatusResponse(
             snapshot.aiAvailable(),
+            snapshot.sideCaptureAvailable(),
             queueLength,
             Math.round(queueLength * avgMs / 1000),
             TimeUtil.toIsoUtc(snapshot.checkedAt())));

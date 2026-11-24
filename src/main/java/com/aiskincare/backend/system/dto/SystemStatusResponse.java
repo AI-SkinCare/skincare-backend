@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 public record SystemStatusResponse(
     @Schema(example = "true") boolean aiAvailable,
+    @Schema(description = "측면 DINOv2를 사용할 수 있을 때만 true") boolean sideCaptureAvailable,
     @Schema(example = "3", description = "QUEUED 건수") long queueLength,
     @Schema(example = "165", description = "round(queueLength × 최근 평균 추천ms / 1000)")
         long estimatedWaitSec,

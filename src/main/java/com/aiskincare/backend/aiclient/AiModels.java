@@ -16,9 +16,17 @@ public final class AiModels {
   public record AiCallContext(String requestId, FixtureScenario scenario) {}
 
   /** GET /health. 분류기(disease_loaded)가 없으면 접수를 받을 수 없다 (TRD §12.6) */
-  public record AiHealth(String status, boolean diseaseLoaded) {}
+  public record AiHealth(String status, boolean diseaseLoaded, boolean sideDinoLoaded) {
+    public AiHealth(String status, boolean diseaseLoaded) {
+      this(status, diseaseLoaded, false);
+    }
+  }
 
-  public record ClassifyInput(byte[] image, String mimeType) {}
+  public record ClassifyInput(byte[] image, String mimeType, String captureView) {
+    public ClassifyInput(byte[] image, String mimeType) {
+      this(image, mimeType, null);
+    }
+  }
 
   /**
    * POST /infer/disease 결과 (TRD §12.3). 값은 AI 원본 그대로 — 추천 호출·재시도 때 그대로 다시 보낸다. probabilities는

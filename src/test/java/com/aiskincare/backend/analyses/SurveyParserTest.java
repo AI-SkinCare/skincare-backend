@@ -16,6 +16,19 @@ class SurveyParserTest {
   private static final String OK = "\"gender\":\"female\",\"ageBand\":\"20s\"";
 
   @Test
+  void captureAngleIsOptionalAndOnlyAcceptsSupportedViews() {
+    assertThat(SurveyParser.parse("{" + OK + "}").survey().captureView()).isNull();
+    for (String view : List.of("front", "side")) {
+      assertThat(
+              SurveyParser.parse("{" + OK + ",\"captureView\":\"" + view + "\"}")
+                  .survey()
+                  .captureView())
+          .isEqualTo(view);
+    }
+    assertThat(SurveyParser.parse("{" + OK + ",\"captureView\":\"scalp\"}").ok()).isFalse();
+  }
+
+  @Test
   @DisplayName("정규화: 모든 키, 미입력 null, 배열 []")
   void normalize() {
     var result = SurveyParser.parse("{" + OK + "}");
