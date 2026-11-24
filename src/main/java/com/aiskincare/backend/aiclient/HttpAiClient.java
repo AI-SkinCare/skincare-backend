@@ -7,6 +7,7 @@ import com.aiskincare.backend.aiclient.AiModels.DiseaseRecommendRequest;
 import com.aiskincare.backend.aiclient.AiModels.DiseaseRecommendResult;
 import com.aiskincare.backend.aiclient.AiModels.DiseaseResult;
 import com.aiskincare.backend.config.Constants;
+import com.aiskincare.backend.knowledge.Knowledge;
 import java.net.SocketTimeoutException;
 import java.net.http.HttpClient;
 import java.net.http.HttpConnectTimeoutException;
@@ -71,6 +72,19 @@ public class HttpAiClient implements AiClient {
   @Override
   public Object modelInfo() {
     return send(healthClient, HttpMethod.GET, "/model-info", authHeaders(null), null, null);
+  }
+
+  @Override
+  public Knowledge.Answer searchKnowledge(Knowledge.Query query) {
+    var body =
+        send(
+            recClient,
+            HttpMethod.POST,
+            "/knowledge/search",
+            authHeaders(null),
+            json.writeValueAsString(query),
+            MediaType.APPLICATION_JSON);
+    return json.treeToValue(body, Knowledge.Answer.class);
   }
 
   /** multipart image와 선택형 설명 요청 (TRD §12.3, gradcam-contract). Content-Type은 시그니처로 판별한 값 */

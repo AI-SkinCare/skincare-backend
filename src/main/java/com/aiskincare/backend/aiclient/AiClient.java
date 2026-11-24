@@ -6,6 +6,7 @@ import com.aiskincare.backend.aiclient.AiModels.ClassifyInput;
 import com.aiskincare.backend.aiclient.AiModels.DiseaseRecommendRequest;
 import com.aiskincare.backend.aiclient.AiModels.DiseaseRecommendResult;
 import com.aiskincare.backend.aiclient.AiModels.DiseaseResult;
+import com.aiskincare.backend.knowledge.Knowledge;
 
 /**
  * AI_MODE=real → {@link HttpAiClient}, fixture → {@link FixtureAiClient}. 오류는 {@link AiError}로 던지고,
@@ -15,6 +16,10 @@ public interface AiClient {
   AiHealth health();
 
   Object modelInfo();
+
+  default Knowledge.Answer searchKnowledge(Knowledge.Query query) {
+    throw AiError.of(AiError.Kind.CONNECTION);
+  }
 
   /** POST /infer/disease — 6종 이미지 분류 */
   DiseaseResult classify(ClassifyInput input, AiCallContext ctx);

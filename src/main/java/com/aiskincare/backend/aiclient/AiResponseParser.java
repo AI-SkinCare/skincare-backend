@@ -182,7 +182,8 @@ public final class AiResponseParser {
                   purpose,
                   priority,
                   c.optionalString(item.get("purpose_source"), path + ".purpose_source"),
-                  c.optionalString(item.get("purpose_status"), path + ".purpose_status")));
+                  c.optionalString(item.get("purpose_status"), path + ".purpose_status"),
+                  IngredientEvidenceParser.forIngredient(root, name)));
         }
       }
       if (ingredients.size() > 5) warnings.add("ingredients_count:" + ingredients.size());
